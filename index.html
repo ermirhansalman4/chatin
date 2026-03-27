@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatin</title>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="layout.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="logo.jpg" type="image/jpeg">
+    <style>
+        /* Auth Modal Overlay */
+        #auth-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .auth-card {
+            background-color: var(--bg-chat);
+            padding: 32px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            width: 480px;
+            text-align: center;
+        }
+
+        .auth-card h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .auth-card p {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .btn-google {
+            background-color: var(--brand-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            transition: background 0.2s;
+        }
+
+        .btn-google:hover {
+            background-color: #4752c4;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Profile Modal Styles */
+        #profile-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 4000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .profile-card {
+            background: #18191c;
+            width: 340px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        .profile-banner {
+            height: 60px;
+            background: #5865f2;
+        }
+
+        .profile-pfp-wrap {
+            position: relative;
+            margin-top: -45px;
+            margin-left: 16px;
+            margin-bottom: 16px;
+        }
+
+        .profile-pfp-wrap img {
+            width: 92px;
+            height: 92px;
+            border-radius: 50%;
+            border: 6px solid #18191c;
+            background: #18191c;
+        }
+
+        .profile-info {
+            padding: 0 16px 16px 16px;
+        }
+
+        .profile-info h3 {
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .profile-info .status-text {
+            color: #b9bbbe;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        /* Voice Grid Styles */
+        #voice-area {
+            flex: 1;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            background: #2f3136;
+        }
+
+        #voice-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .voice-card {
+            background: #36393f;
+            border-radius: 8px;
+            aspect-ratio: 16/9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .voice-card img {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            object-fit: cover;
+            margin-bottom: 12px;
+        }
+
+        .voice-card.is-speaking img {
+            border-color: #3ba55c;
+            box-shadow: 0 0 15px rgba(59, 165, 92, 0.4);
+        }
+
+        .voice-card span {
+            font-weight: bold;
+            font-size: 14px;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+            text-align: center;
+        }
+
+        .voice-status-icons {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            display: flex;
+            gap: 4px;
+            color: #b9bbbe;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- AUTH OVERLAY -->
+    <div id="auth-overlay">
+        <div class="auth-card">
+            <h1>Chatin'e Hoş Geldin!</h1>
+            <p>Arkadaşlarınla gerçek zamanlı sesli ve yazılı sohbet et.</p>
+            <button id="google-login-btn" class="btn-google">
+                <i data-lucide="log-in"></i> Google ile Giriş Yap
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP SHELL -->
+    <div id="app-container" class="hidden">
+
+        <!-- SIDEBAR (72px) -->
+        <div id="sidebar">
+            <div class="server-icon active" id="home-btn" title="Chatin Home">
+                <img src="logo.jpg" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+            </div>
+            <div style="width: 32px; height: 2px; background: #3c3f44; border-radius: 1px; margin: 4px 0;"></div>
+
+            <!-- Dynamic Server Icons Go Here -->
+            <div id="server-list"></div>
+
+            <div class="server-icon" id="add-server-btn" title="Add a Server" style="color: var(--success-color);">
+                <i data-lucide="plus"></i>
+            </div>
+            <div class="server-icon" title="Explore" style="color: var(--success-color);">
+                <i data-lucide="compass"></i>
+            </div>
+        </div>
+
+        <!-- CHANNEL LIST (240px) -->
+        <div id="channel-list">
+            <div class="header-container" id="server-header-btn">
+                <span id="active-server-name">Sunucu Seçin</span>
+                <i data-lucide="chevron-down" style="margin-left: auto; width: 18px;"></i>
+            </div>
+
+            <!-- Invite Code Display (Only visible to members) -->
+            <div id="invite-box" class="hidden"
+                style="padding: 12px 16px; background: rgba(0,0,0,0.1); border-bottom: 1px solid rgba(0,0,0,0.1);">
+                <div
+                    style="font-size: 10px; font-weight: bold; color: var(--text-secondary); text-transform: uppercase;">
+                    Davet Kodu</div>
+                <div id="current-invite-code"
+                    style="font-size: 14px; font-family: monospace; color: var(--success-color); cursor: pointer;"
+                    title="Kopyalamak için tıkla">XXXXXX</div>
+            </div>
+
+            <div class="channel-items">
+                <div
+                    style="display: flex; align-items: center; justify-content: space-between; padding: 18px 8px 4px 8px;">
+                    <div class="channel-group-title"
+                        style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase; font-weight: bold;">
+                        Metin Kanalları</div>
+                    <span id="add-channel-btn"
+                        style="cursor: pointer; color: var(--text-secondary); display: flex; align-items: center;">
+                        <i data-lucide="plus" style="width: 14px;"></i>
+                    </span>
+                </div>
+                <div id="text-channels-container"></div>
+            </div>
+
+            <!-- USER PANEL -->
+            <div class="user-panel">
+                <div id="user-avatar"
+                    style="width: 32px; height: 32px; border-radius: 50%; background: #5865f2; overflow: hidden;">
+                    <img src="https://ui-avatars.com/api/?name=User&background=random" alt="pfp" style="width: 100%; height: 100%;">
+                </div>
+                <div style="flex: 1; overflow: hidden; line-height: 1.2;">
+                    <div id="user-display-name"
+                        style="font-size: 14px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        User Name</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">#0001</div>
+                </div>
+                <div style="display: flex; gap: 4px; color: var(--text-secondary);">
+                    <div id="mic-btn" class="icon-button" title="Sesi Kapat/Aç">
+                        <i data-lucide="mic" style="width: 18px; cursor: pointer;"></i>
+                    </div>
+                    <div id="deafen-btn" class="icon-button" title="Sesi Sağırlaştır/Duy">
+                        <i data-lucide="headphones" style="width: 18px; cursor: pointer;"></i>
+                    </div>
+                    <div id="settings-btn" class="icon-button" title="Kullanıcı Ayarları">
+                        <i data-lucide="settings" style="width: 18px; cursor: pointer;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHAT AREA (Flexible) -->
+        <div id="chat-area">
+            <div id="chat-header">
+                <i data-lucide="hash" style="color: var(--text-secondary); width: 20px; margin-right: 8px;"></i>
+                <span id="active-channel-name">genel</span>
+            </div>
+
+            <div id="message-list">
+                <!-- Messages will be rendered here -->
+            </div>
+
+            <!-- New Voice Area UI -->
+            <div id="voice-area" class="hidden">
+                <div id="voice-grid">
+                    <!-- Voice participants will be loaded here -->
+                </div>
+            </div>
+
+            <div id="message-input-container">
+                <div class="message-box">
+                    <i data-lucide="plus-circle" id="msg-plus-icon"
+                        style="cursor: pointer; color: var(--text-secondary); margin-right: 12px;"></i>
+                    <input type="text" id="chat-input" placeholder="#genel kanalına mesaj gönder">
+                    <div style="display: flex; gap: 12px; color: var(--text-secondary); margin-left: 12px;">
+                        <i data-lucide="gift" id="gift-btn" title="Hediye" style="width: 20px; cursor: pointer;"></i>
+                        <i data-lucide="sticky-note" id="note-btn" title="Not Ekle" style="width: 20px; cursor: pointer;"></i>
+                        <i data-lucide="smile" id="emoji-btn" title="Emoji Ekle" style="width: 20px; cursor: pointer;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MEMBER LIST (240px) -->
+        <div id="member-list">
+            <div id="member-list-container">
+                <!-- Members will be loaded here -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- CREATE SERVER MODAL -->
+    <div id="create-server-modal" class="hidden"
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; display: flex; align-items: center; justify-content: center;">
+        <div class="modal-content"
+            style="background: white; color: black; padding: 24px; border-radius: 8px; width: 440px; text-align: center;">
+            <h2 style="font-size: 24px; font-weight: bold;">Sunucunu Özelleştir</h2>
+            <p style="color: #4f5660; margin-top: 8px;">Sunucuna bir isim ve bir ikon vererek ona kişilik kat. İstediğin
+                zaman değiştirebilirsin.</p>
+
+            <div style="margin-top: 24px; position: relative; display: inline-block;">
+                <div id="server-icon-preview"
+                    style="width: 80px; height: 80px; border-radius: 50%; background: #e3e5e8; display: flex; align-items: center; justify-content: center; border: 2px dashed #4f5660; color: #4f5660; cursor: pointer;">
+                    <i data-lucide="camera"></i>
+                </div>
+                <input type="file" id="server-icon-input" style="display: none;" accept="image/*">
+            </div>
+
+            <div style="text-align: left; margin-top: 24px;">
+                <label style="font-size: 12px; font-weight: bold; color: #4f5660; text-transform: uppercase;">Sunucu
+                    Adı</label>
+                <input type="text" id="new-server-name" placeholder="Sunucu Adı"
+                    style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ddd; margin-top: 8px; outline: none; background: #e3e5e8;">
+            </div>
+
+            <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center;">
+                <button id="close-server-modal"
+                    style="background: none; border: none; font-weight: bold; cursor: pointer;">Geri</button>
+                <button id="confirm-create-server"
+                    style="background: var(--brand-color); color: white; border: none; padding: 10px 24px; border-radius: 4px; font-weight: bold; cursor: pointer;">Oluştur</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JOIN SERVER MODAL -->
+    <div id="join-server-modal" class="hidden"
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; display: flex; align-items: center; justify-content: center;">
+        <div class="modal-content"
+            style="background: white; color: black; padding: 24px; border-radius: 8px; width: 440px; text-align: center;">
+            <h2 style="font-size: 24px; font-weight: bold;">Bir Sunucuya Katıl</h2>
+            <p style="color: #4f5660; margin-top: 8px;">Aşağıya bir davet linki girerek mevcut bir sunucuya katıl.</p>
+
+            <div style="text-align: left; margin-top: 24px;">
+                <label style="font-size: 12px; font-weight: bold; color: #4f5660; text-transform: uppercase;">Davet
+                    Bağlantısı</label>
+                <input type="text" id="join-invite-code" placeholder="h7f2k9"
+                    style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ddd; margin-top: 8px; outline: none; background: #e3e5e8;">
+                <p style="font-size: 12px; color: #4f5660; margin-top: 8px;">Davetiyeler şuna benzer: <span
+                        style="font-weight: bold;">h7f2k9</span></p>
+            </div>
+
+            <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center;">
+                <button id="close-join-modal"
+                    style="background: none; border: none; font-weight: bold; cursor: pointer;">Geri</button>
+                <button id="confirm-join-server"
+                    style="background: var(--brand-color); color: white; border: none; padding: 10px 24px; border-radius: 4px; font-weight: bold; cursor: pointer;">Sunucuya
+                    Katıl</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP SCRIPT -->
+    <script type="module">
+        import { loginWithGoogle, logout } from './auth.js';
+        import { listenToMessages, sendMessage, createServer, joinServer, createChannel } from './app.js';
+
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        const authOverlay = document.getElementById('auth-overlay');
+        const appContainer = document.getElementById('app-container');
+        const loginBtn = document.getElementById('google-login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const messageInput = document.getElementById('chat-input');
+
+        // Login Handler
+        loginBtn.addEventListener('click', async () => {
+            try {
+                await loginWithGoogle();
+            } catch (err) {
+                alert("Giriş yaparken hata oluştu: " + err.message);
+            }
+        });
+
+        // Logout Handler
+        logoutBtn.addEventListener('click', async () => {
+            if (confirm("Çıkış yapmak istiyor musunuz?")) {
+                await logout();
+            }
+        });
+
+        // Auth Success Listener
+        window.addEventListener('auth-success', (e) => {
+            const user = e.detail;
+            authOverlay.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+
+            // Update UI with User Profile Info
+            document.getElementById('user-display-name').innerText = user.displayName;
+            if (user.photoURL) {
+                document.getElementById('user-avatar').querySelector('img').src = user.photoURL;
+            }
+
+            // Start Listening for Default Channel - handled by listenToServers(); in app.js
+        });
+
+        // Auth Logout Listener
+        window.addEventListener('auth-logout', () => {
+            authOverlay.classList.remove('hidden');
+            appContainer.classList.add('hidden');
+        });
+
+        // File Selection Trick
+        const plusIcon = document.getElementById('msg-plus-icon');
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+
+        if (plusIcon) {
+            plusIcon.addEventListener('click', () => fileInput.click());
+        }
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                let textPrompt = prompt("Mesaj eklemek ister misiniz?", "");
+                await sendMessage(textPrompt, file);
+                fileInput.value = ''; // Reset
+            }
+        });
+
+        // --- DYNAMIC CHANNEL CREATION ---
+        const addChannelBtn = document.getElementById('add-channel-btn');
+        if (addChannelBtn) {
+            addChannelBtn.addEventListener('click', async () => {
+                const channelName = prompt("Yeni kanal adı:", "");
+                if (channelName) {
+                    const type = confirm("Bu bir SES kanalımı olsun?\nTamam = SES, İptal = METİN") ? 'voice' : 'text';
+                    try {
+                        await createChannel(channelName.toLowerCase(), type);
+                    } catch (err) {
+                        alert("Kanal oluşturma hatası: " + err.message);
+                    }
+                }
+            });
+        }
+
+        // --- INVITE CODE COPY ---
+        document.getElementById('current-invite-code').addEventListener('click', (e) => {
+            const code = e.target.innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = e.target.innerText;
+                e.target.innerText = "KOPYALANDI!";
+                setTimeout(() => e.target.innerText = originalText, 1000);
+            });
+        });
+
+        // --- MODAL LOGIC ---
+        const createServerModal = document.getElementById('create-server-modal');
+        const joinServerModal = document.getElementById('join-server-modal');
+        const addServerBtn = document.getElementById('add-server-btn');
+        const closeServerModal = document.getElementById('close-server-modal');
+        const confirmCreateServer = document.getElementById('confirm-create-server');
+        const serverIconInput = document.getElementById('server-icon-input');
+        const serverIconPreview = document.getElementById('server-icon-preview');
+
+        addServerBtn.addEventListener('click', () => {
+            createServerModal.classList.remove('hidden');
+        });
+
+        closeServerModal.addEventListener('click', () => {
+            createServerModal.classList.add('hidden');
+        });
+
+        serverIconPreview.addEventListener('click', () => serverIconInput.click());
+
+        serverIconInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    serverIconPreview.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        confirmCreateServer.addEventListener('click', async () => {
+            const name = document.getElementById('new-server-name').value;
+            const file = serverIconInput.files[0];
+            if (!name) return alert("Lütfen bir sunucu adı girin.");
+
+            try {
+                confirmCreateServer.disabled = true;
+                confirmCreateServer.innerText = "Oluşturuluyor...";
+                await createServer(name, file);
+                createServerModal.classList.add('hidden');
+                document.getElementById('new-server-name').value = '';
+                serverIconPreview.innerHTML = '<i data-lucide="camera"></i>';
+                lucide.createIcons();
+            } catch (err) {
+                alert("Sunucu oluşturulurken hata: " + err.message);
+            } finally {
+                confirmCreateServer.disabled = false;
+                confirmCreateServer.innerText = "Oluştur";
+            }
+        });
+
+        // Join Server Logic
+        document.querySelector('.server-icon[title="Explore"]').addEventListener('click', () => {
+            joinServerModal.classList.remove('hidden');
+        });
+
+        document.getElementById('close-join-modal').addEventListener('click', () => {
+            joinServerModal.classList.add('hidden');
+        });
+
+        document.getElementById('confirm-join-server').addEventListener('click', async () => {
+            const code = document.getElementById('join-invite-code').value;
+            if (!code) return alert("Davet kodu girin.");
+            try {
+                await joinServer(code);
+                joinServerModal.classList.add('hidden');
+                document.getElementById('join-invite-code').value = '';
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+
+        // --- USER SETTINGS LOGIC ---
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsModal = document.getElementById('close-settings-modal');
+        const confirmSettingsUpdate = document.getElementById('confirm-settings-update');
+
+        settingsBtn.addEventListener('click', () => {
+            document.getElementById('edit-display-name').value = document.getElementById('user-display-name').innerText;
+            settingsModal.classList.remove('hidden');
+        });
+
+        closeSettingsModal.addEventListener('click', () => {
+            settingsModal.classList.add('hidden');
+        });
+
+        confirmSettingsUpdate.addEventListener('click', async () => {
+            const newName = document.getElementById('edit-display-name').value;
+            if (!newName) return;
+            try {
+                const user = (await import('./firebase.config.js')).auth.currentUser;
+                const { updateProfile } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js');
+                const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
+                const { db } = await import('./firebase.config.js');
+
+                await updateProfile(user, { displayName: newName });
+                await updateDoc(doc(db, 'users', user.uid), { username: newName });
+
+                document.getElementById('user-display-name').innerText = newName;
+                settingsModal.classList.add('hidden');
+                alert("Profil güncellendi!");
+            } catch (err) {
+                alert("Güncelleme hatası: " + err.message);
+            }
+        });
+
+        // Chat Toolbar Actions
+        document.getElementById('emoji-btn').addEventListener('click', () => {
+            document.getElementById('chat-input').value += "😊";
+        });
+        document.getElementById('note-btn').addEventListener('click', () => {
+            document.getElementById('chat-input').value += "```\nNot: \n```";
+        });
+        document.getElementById('gift-btn').addEventListener('click', () => {
+            alert("Chatin Nitro yakında sizlerle! 🚀");
+        });
+
+        // Mic and Deafen Toggle Placeholders
+        let isMuted = false;
+        let isDeafened = false;
+
+        document.getElementById('mic-btn').addEventListener('click', async () => {
+            isMuted = !isMuted;
+            const micIcon = document.getElementById('mic-btn').querySelector('[data-lucide]');
+            micIcon.setAttribute('data-lucide', isMuted ? 'mic-off' : 'mic');
+            lucide.createIcons();
+
+            // Logic to mute WebRTC track
+            const { toggleLocalMic } = await import('./voice.js');
+            toggleLocalMic(!isMuted);
+        });
+
+        document.getElementById('deafen-btn').addEventListener('click', () => {
+            isDeafened = !isDeafened;
+            const deafenIcon = document.getElementById('deafen-btn').querySelector('[data-lucide]');
+            deafenIcon.setAttribute('data-lucide', isDeafened ? 'volume-x' : 'headphones');
+            lucide.createIcons();
+
+            // Logic to mute all remote audio
+            const audioContainer = document.getElementById('remote-audio-container');
+            if (audioContainer) {
+                audioContainer.style.opacity = isDeafened ? '0.1' : '1';
+                // Also mute actual elements
+                audioContainer.querySelectorAll('audio').forEach(a => a.muted = isDeafened);
+            }
+        });
+
+        // --- PROFILE MODAL LOGIC ---
+        const profileModalOverlay = document.getElementById('profile-modal-overlay');
+
+        window.openUserProfile = async (data) => {
+            const user = (await import('./firebase.config.js')).auth.currentUser;
+            const { doc, getDoc, updateDoc, arrayUnion, arrayRemove } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
+            const { db } = await import('./firebase.config.js');
+            
+            document.getElementById('p-username').innerText = data.username;
+            document.getElementById('p-avatar').src = data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random&size=92`;
+            document.getElementById('p-status').innerText = data.isOwner ? '👑 KURUCU' : (data.isAdmin ? '🛡️ MODERATÖR' : 'Üye');
+            
+            // Show Role Button only to Server Owner
+            const delegateBtn = document.getElementById('delegate-role-btn');
+            const currentServerId = window.lastActiveServerId; 
+            
+            if (currentServerId) {
+                const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
+                const isCreator = serverDoc.exists() && serverDoc.data().ownerId === user.uid;
+                
+                if (isCreator && data.uid !== user.uid) {
+                    delegateBtn.classList.remove('hidden');
+                    delegateBtn.onclick = async () => {
+                        const targetRole = data.isAdmin ? 'Üye' : 'Moderatör';
+                        if (confirm(`${data.username} kullanıcısını ${targetRole} yapmak istiyor musunuz?`)) {
+                             const field = data.isAdmin ? 'admins' : 'admins'; // Simple logic
+                             await updateDoc(doc(db, 'servers', currentServerId), {
+                                 admins: data.isAdmin ? arrayRemove(data.uid) : arrayUnion(data.uid)
+                             });
+                             alert("Yetki güncellendi!");
+                             profileModalOverlay.classList.add('hidden');
+                        }
+                    };
+                } else {
+                    delegateBtn.classList.add('hidden');
+                }
+            }
+
+            profileModalOverlay.classList.remove('hidden');
+        };
+
+        profileModalOverlay.addEventListener('click', (e) => {
+            if (e.target === profileModalOverlay) profileModalOverlay.classList.add('hidden');
+        });
+
+    </script>
+
+    <!-- PROFILE MODAL -->
+    <div id="profile-modal-overlay" class="hidden">
+        <div class="profile-card">
+            <div class="profile-banner"></div>
+            <div class="profile-pfp-wrap">
+                <img id="p-avatar" src="https://ui-avatars.com/api/?name=User&background=random&size=92" alt="pfp">
+            </div>
+            <div class="profile-info">
+                <h3 id="p-username">Username</h3>
+                <div class="status-text" id="p-status">Çevrimiçi</div>
+                <div style="height: 1px; background: rgba(255,255,255,0.06); margin: 12px 0;"></div>
+                <div style="font-size: 12px; font-weight: bold; text-transform: uppercase; color: #b9bbbe;">Hakkımda
+                </div>
+                <p style="font-size: 14px; margin-top: 4px; color: #dcddde;">Bu kullanıcı henüz bir bio yazmamış.</p>
+                
+                <button id="delegate-role-btn" class="hidden" style="width: 100%; padding: 8px; margin-top: 16px; background: #5865f2; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">YETKİ VER / AL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACCOUNT SETTINGS MODAL -->
+    <div id="settings-modal" class="hidden"
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #2f3136; z-index: 3000; display: flex; align-items: center; justify-content: center; color: white;">
+        <div style="width: 600px; display: flex; gap: 32px;">
+            <div style="flex: 1;">
+                <h2 style="font-size: 24px; font-weight: bold; margin-bottom: 24px;">Kullanıcı Ayarları</h2>
+                <label
+                    style="font-size: 12px; font-weight: bold; color: var(--text-secondary); text-transform: uppercase;">Kullanıcı
+                    Adı</label>
+                <input type="text" id="edit-display-name"
+                    style="width: 100%; padding: 10px; background: #202225; border: none; color: white; border-radius: 4px; margin-top: 8px; margin-bottom: 24px;">
+
+                <div style="display: flex; gap: 16px;">
+                    <button id="confirm-settings-update"
+                        style="background: var(--brand-color); color: white; padding: 10px 24px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Kaydet</button>
+                    <button id="logout-btn"
+                        style="background: var(--error-color); color: white; padding: 10px 24px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Çıkış
+                        Yap</button>
+                </div>
+            </div>
+            <div style="width: 1px; background: #4f5660;"></div>
+            <button id="close-settings-modal"
+                style="position: absolute; top: 20px; right: 20px; background: none; border: 1px solid white; color: white; border-radius: 50%; width: 40px; height: 40px; cursor: pointer;">X</button>
+        </div>
+    </div>
+
+</body>
+
+</html>
