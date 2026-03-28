@@ -391,67 +391,26 @@
             }
         };
 
-        // Final Logic for Creating/Joining
-        document.getElementById('create-server-final-btn').onclick = async () => {
-            const name = document.getElementById('server-name-input').value.trim();
-            if(!name) return showToast("Sunucu adı girin!", "error");
-            const { createServer } = await import('./app.js');
-            try { await createServer(name); document.getElementById('create-server-modal').classList.add('hidden'); }
-            catch(e) { showToast(e.message, "error"); }
-        };
-
-        document.getElementById('join-server-final-btn').onclick = async () => {
-            const code = document.getElementById('join-invite-input').value.trim();
-            if(!code) return showToast("Davet kodu girin!", "error");
-            const { joinServer } = await import('./app.js');
-            try { await joinServer(code); document.getElementById('join-server-modal').classList.add('hidden'); window.location.reload(); }
-            catch(e) { showToast(e.message, "error"); }
-        };
-
-        document.getElementById('logout-btn-modal').onclick = async () => {
-            const { logout } = await import('./auth.js');
-            await logout(); window.location.reload();
-        };
-
-        // Emoji Picker Toggle
+        // Emoji Picker Toggle (Yerel Sayfa İşlevi)
         const emojiBtn = document.getElementById('emoji-btn');
         const picker = document.getElementById('emoji-picker');
-        emojiBtn.onclick = (e) => { e.stopPropagation(); picker.classList.toggle('hidden'); };
-        picker.onclick = (e) => {
-            if(e.target.classList.contains('emoji-item')) {
-                const input = document.getElementById('chat-input');
-                input.value += e.target.innerText;
-                input.focus();
-            }
-        };
-        window.onclick = () => picker.classList.add('hidden');
+        if(emojiBtn) {
+            emojiBtn.onclick = (e) => { e.stopPropagation(); picker.classList.toggle('hidden'); };
+            picker.onclick = (e) => {
+                if(e.target.classList.contains('emoji-item')) {
+                    const input = document.getElementById('chat-input');
+                    input.value += e.target.innerText;
+                    input.focus();
+                }
+            };
+            window.onclick = () => picker.classList.add('hidden');
+        }
 
-        // MIC Toggle
-        let isMuted = false;
-        document.getElementById('mic-btn').onclick = async () => {
-             isMuted = !isMuted;
-             const { toggleLocalMic } = await import('./voice.js');
-             await toggleLocalMic(!isMuted);
-             document.querySelector('#mic-btn i').setAttribute('data-lucide', isMuted ? 'mic-off' : 'mic');
-             document.getElementById('mic-btn').style.background = isMuted ? 'var(--error-color)' : '';
-             lucide.createIcons();
-             showToast(isMuted ? "Mikrofon kapandı" : "Mikrofon açıldı");
-        };
-
-        // DEAFEN Toggle
-        let isDeafened = false;
-        document.getElementById('deafen-btn').onclick = () => {
-            isDeafened = !isDeafened;
-            document.querySelector('#deafen-btn i').setAttribute('data-lucide', isDeafened ? 'headphones-off' : 'headphones');
-            document.getElementById('deafen-btn').style.background = isDeafened ? 'var(--error-color)' : '';
-            lucide.createIcons();
-            showToast(isDeafened ? "Sesler kapatıldı" : "Sesler açıldı");
-        };
-
-        document.getElementById('current-invite-code').onclick = (e) => {
+        // Davet Kodu Kopyalama
+        document.getElementById('current-invite-code')?.addEventListener('click', (e) => {
             navigator.clipboard.writeText(e.target.innerText);
             showToast("Davet kodu kopyalandı!");
-        };
+        });
     </script>
 </body>
 </html>

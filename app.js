@@ -21,7 +21,7 @@ import {
     onValue as onRtdbValue 
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-import { joinVoiceChannel, leaveVoiceChannel, startScreenShare, stopScreenShare } from './voice.js';
+import { joinVoiceChannel, leaveVoiceChannel, startScreenShare, stopScreenShare, toggleLocalMic } from './voice.js';
 import { rtdb } from './firebase.config.js';
 
 import { 
@@ -551,10 +551,13 @@ document.addEventListener('click', (e) => {
     const micBtn = e.target.closest('#mic-btn');
     if (micBtn) {
         isMuted = !isMuted;
+        toggleLocalMic(!isMuted); // GERÇEK MİKROFONU KAPAT/AÇ
         const icon = isMuted ? 'mic-off' : 'mic';
         micBtn.innerHTML = `<i data-lucide="${icon}"></i>`;
         micBtn.style.color = isMuted ? 'var(--error-color)' : 'var(--text-secondary)';
+        micBtn.style.background = isMuted ? 'rgba(255, 71, 87, 0.1)' : '';
         lucide.createIcons();
+        showToast(isMuted ? "Mikrofon kapatıldı" : "Mikrofon açıldı");
     }
 
     const deafBtn = e.target.closest('#deafen-btn');
@@ -563,7 +566,9 @@ document.addEventListener('click', (e) => {
         // Lucide'de headphones-off olmadığı için aynı ikonu tutup rengini değiştiriyoruz
         deafBtn.innerHTML = `<i data-lucide="headphones"></i>`;
         deafBtn.style.color = isDeafened ? 'var(--error-color)' : 'var(--text-secondary)';
+        deafBtn.style.background = isDeafened ? 'rgba(255, 71, 87, 0.1)' : '';
         lucide.createIcons();
+        showToast(isDeafened ? "Sesler kapatıldı" : "Sesler açıldı");
     }
 
     const settingsBtn = e.target.closest('#settings-btn');
