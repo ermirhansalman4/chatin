@@ -7,8 +7,6 @@ import {
 
 import { 
     signInWithPopup, 
-    signInWithEmailAndPassword, 
-    createUserWithEmailAndPassword, 
     signOut, 
     onAuthStateChanged 
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
@@ -36,7 +34,7 @@ export const loginWithGoogle = async () => {
         await syncUserToFirestore(user);
         return user;
     } catch (error) {
-        console.error("Google Auth Error:", error);
+        console.error("Google Auth Popup Error:", error);
         throw error;
     }
 };
@@ -45,7 +43,6 @@ export const logout = async () => {
     try {
         const user = auth.currentUser;
         if (user) {
-            // Firestore status update
             await updateDoc(doc(db, 'users', user.uid), { status: 'offline' });
         }
         await signOut(auth);
@@ -67,39 +64,32 @@ const syncUserToFirestore = async (user) => {
         createdAt: serverTimestamp()
     };
     
-    // Merge true: If user exists, update; if not, create.
     await setDoc(userRef, userData, { merge: true });
 };
 
 // --- REALTIME PRESENCE SYSTEM ---
 
 export const setupPresence = (uid) => {
-    // RTDB Presence Reference
     const userStatusRef = ref(rtdb, '/status/' + uid);
-    
-    // Check connection state
     const connectedRef = ref(rtdb, '.info/connected');
     
     onValue(connectedRef, (snap) => {
         if (snap.val() === false) return;
 
-        // When user disconnects (tab closed, internet lost), set status to offline in RTDB
         onDisconnect(userStatusRef).set({
             state: 'offline',
             last_changed: serverTimestamp()
         }).then(() => {
-            // When user is currently connected, set status to online in RTDB
             set(userStatusRef, {
                 state: 'online',
                 last_changed: serverTimestamp()
             }).catch(err => console.error("Presence status set error:", err));
             
-            // Also sync online status to Firestore for general querying
             updateDoc(doc(db, 'users', uid), { 
                 status: 'online',
                 lastSeen: serverTimestamp() 
             }).catch(err => console.error("Firestore status update error:", err));
-        }).catch(err => console.error("Presence onDisconnect error:", err));
+        });
     });
 };
 
@@ -109,7 +99,6 @@ onAuthStateChanged(auth, (user) => {
     if (user) {
         console.log("Logged In:", user.displayName);
         setupPresence(user.uid);
-        // Dispatch custom event for UI updates
         window.dispatchEvent(new CustomEvent('auth-success', { detail: user }));
     } else {
         console.log("Logged Out");

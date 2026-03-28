@@ -22,7 +22,9 @@ const servers = {
 };
 
 let localStream = null;
+let screenStream = null;
 let peerConnections = {}; // uid -> RTCPeerConnection
+let unsubscribeOffers = null; // Offer dinleyicisini temizlemek için
 
 // UI Elements for feedback (optional, we can use a hidden audio pool)
 const audioContainer = document.createElement('div');
@@ -40,7 +42,19 @@ export const joinVoiceChannel = async (channelId) => {
     console.log(`🎤 Kanal ${channelId} bağlantısı kuruluyor...`);
 
     // 1. Microphone Al
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Tarayıcınız mikrofon erişimine izin vermiyor veya bağlantınız güvenli (HTTPS) değil. Ses kanalı için HTTPS veya localhost gereklidir.");
+        console.error("navigator.mediaDevices bulunamadı. Güvenli olmayan bir bağlantı (HTTP) kullanıyor olabilirsiniz.");
+        return;
+    }
+
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (e) {
+        console.error("Mikrofon erişimi reddedildi:", e);
+        alert("Mikrofon izni verilmedi. Ses kanalına katılamazsınız.");
+        return;
+    }
 
     // 2. Kanala Katılım Kaydı (Firestore)
     const channelRef = doc(db, 'channels', channelId);
@@ -72,13 +86,20 @@ export const joinVoiceChannel = async (channelId) => {
         });
     });
 
-    // 4. Bize gelen teklifleri (offers) dinle
+    // 4. Bize gelen teklifleri (offers) dinle (Sadece yeni teklifler)
     const offersRef = collection(channelRef, 'offers');
-    onSnapshot(offersRef, (snapshot) => {
+    const now = Date.now();
+    
+    if (unsubscribeOffers) unsubscribeOffers();
+    const q = query(offersRef, where('createdAt', '>', now));
+    
+    unsubscribeOffers = onSnapshot(q, (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
             const data = change.doc.data();
-            if (data.targetUid === user.uid && change.type === 'added') {
-                handleIncomingCall(channelId, data, change.doc.id);
+            if (data.targetUid === user.uid) {
+                if (change.type === 'added' || change.type === 'modified') {
+                    handleIncomingCall(channelId, data, change.doc.id);
+                }
             }
         });
     });
@@ -118,29 +139,46 @@ const initiateCall = async (channelId, targetUid) => {
         sdp: offerDescription.sdp,
         type: offerDescription.type,
         senderUid: user.uid,
-        targetUid: targetUid
+        targetUid: targetUid,
+        createdAt: Date.now()
     };
 
     await setDoc(offerDoc, offer);
 
-    // Answer'ı dinle
+    // Re-negotiation (Yeniden el sıkışma) olayını dinle
+    pc.onnegotiationneeded = async () => {
+        console.log("Renegotiation needed for:", targetUid);
+        const newOffer = await pc.createOffer();
+        await pc.setLocalDescription(newOffer);
+        await updateDoc(offerDoc, {
+            sdp: newOffer.sdp,
+            type: newOffer.type,
+            createdAt: Date.now() // Diğer tarafın 'modified' olarak yakalayabilmesi için
+        });
+    };
+
     onSnapshot(offerDoc, (snapshot) => {
         const data = snapshot.data();
-        if (!pc.currentRemoteDescription && data?.answer) {
+        // Sadece bekleyen bir offer varsa answer'ı kabul et
+        if (data?.answer && pc.signalingState === 'have-local-offer') {
+            console.log("Setting remote answer from modified doc");
             const answerDescription = new RTCSessionDescription(data.answer);
-            pc.setRemoteDescription(answerDescription);
+            pc.setRemoteDescription(answerDescription).catch(e => console.error("Remote description error:", e));
         }
     });
 
-    // Uzak ICE adaylarını dinle
-    const answerCandidates = collection(offerDoc, 'answerCandidates');
-    onSnapshot(answerCandidates, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-                pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-            }
+    // Uzak ICE adaylarını dinle (Sadece bir kez başlat)
+    if (!pc._iceStarted) {
+        pc._iceStarted = true;
+        const answerCandidates = collection(offerDoc, 'answerCandidates');
+        onSnapshot(answerCandidates, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added' && pc.remoteDescription) {
+                    pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => {});
+                }
+            });
         });
-    });
+    }
 };
 
 /**
@@ -148,12 +186,15 @@ const initiateCall = async (channelId, targetUid) => {
  */
 const handleIncomingCall = async (channelId, data, offerDocId) => {
     const senderUid = data.senderUid;
-    const pc = createPeerConnection(senderUid);
-    peerConnections[senderUid] = pc;
-
-    localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
-    });
+    let pc = peerConnections[senderUid];
+    
+    if (!pc) {
+        pc = createPeerConnection(senderUid);
+        peerConnections[senderUid] = pc;
+        localStream.getTracks().forEach((track) => {
+            pc.addTrack(track, localStream);
+        });
+    }
 
     const offerDoc = doc(db, 'channels', channelId, 'offers', offerDocId);
     const answerCandidates = collection(offerDoc, 'answerCandidates');
@@ -163,7 +204,10 @@ const handleIncomingCall = async (channelId, data, offerDocId) => {
         event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
     };
 
-    await pc.setRemoteDescription(new RTCSessionDescription(data));
+    await pc.setRemoteDescription(new RTCSessionDescription({
+        type: data.type,
+        sdp: data.sdp
+    }));
 
     const answerDescription = await pc.createAnswer();
     await pc.setLocalDescription(answerDescription);
@@ -175,13 +219,16 @@ const handleIncomingCall = async (channelId, data, offerDocId) => {
 
     await updateDoc(offerDoc, { answer });
 
-    onSnapshot(offerCandidates, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-                pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-            }
+    if (!pc._iceInStarted) {
+        pc._iceInStarted = true;
+        onSnapshot(offerCandidates, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added' && pc.remoteDescription) {
+                    pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => {});
+                }
+            });
         });
-    });
+    }
 };
 
 /**
@@ -191,21 +238,42 @@ const createPeerConnection = (targetUid) => {
     const pc = new RTCPeerConnection(servers);
 
     pc.ontrack = (event) => {
-        console.log(`🔊 Uzak ses akışı alındı: ${targetUid}`);
+        console.log(`🔊 Uzak akış alındı: ${targetUid}`, event.streams[0]);
         const remoteStream = event.streams[0];
-        
-        let audio = document.getElementById(`audio-${targetUid}`);
-        if (!audio) {
-            audio = document.createElement('audio');
-            audio.id = `audio-${targetUid}`;
+        const track = event.track;
+
+        if (track.kind === 'audio') {
+            let audio = document.getElementById(`audio-${targetUid}`);
+            if (!audio) {
+                audio = document.createElement('audio');
+                audio.id = `audio-${targetUid}`;
+                audioContainer.appendChild(audio);
+            }
+            audio.srcObject = remoteStream;
             audio.autoplay = true;
-            audioContainer.appendChild(audio);
+            audio.play().catch(e => console.warn("Otomatik oynatma engellendi:", e));
+        } 
+        
+        if (track.kind === 'video') {
+            // GENİŞ EKRANA GÖRÜNTÜYÜ VER
+            const display = document.getElementById('screen-share-display');
+            if (display) {
+                display.classList.remove('hidden');
+                display.innerHTML = ''; // Önceki görüntüyü temizle
+                
+                const video = document.createElement('video');
+                video.id = `video-${targetUid}`;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.srcObject = remoteStream;
+                display.appendChild(video);
+            }
         }
-        audio.srcObject = remoteStream;
     };
 
     pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'disconnected') {
+        console.log(`Connection State (${targetUid}):`, pc.iceConnectionState);
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
             closeConnection(targetUid);
         }
     };
@@ -230,12 +298,78 @@ export const toggleLocalMic = (enabled) => {
     }
 };
 
+export const startScreenShare = async () => {
+    try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+             throw new Error("HTTPS Gereklidir! Ekran paylaşımı güvenli olmayan bağlantılarda (HTTP) çalışmaz.");
+        }
+
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        const user = auth.currentUser;
+        
+        // 1. Kendi Geniş Ekran Önizlemeni Aç
+        const display = document.getElementById('screen-share-display');
+        if (display) {
+            display.classList.remove('hidden');
+            display.innerHTML = ''; 
+            
+            const localVideo = document.createElement('video');
+            localVideo.id = `video-${user.uid}`;
+            localVideo.autoplay = true;
+            localVideo.muted = true;
+            localVideo.playsInline = true;
+            localVideo.srcObject = screenStream;
+            display.appendChild(localVideo);
+        }
+
+        // 2. Her bağlantıya ekran paylam track'ini ekle
+        const videoTrack = screenStream.getVideoTracks()[0];
+        
+        Object.values(peerConnections).forEach(pc => {
+            pc.addTrack(videoTrack, screenStream);
+        });
+
+        // Paylaşım durdurulduğunda (Tarayıcı barından)
+        videoTrack.onended = () => stopScreenShare();
+
+        return true;
+    } catch (e) {
+        console.error("Ekran paylaşımı hatası:", e);
+        return false;
+    }
+};
+
+export const stopScreenShare = async () => {
+    if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+        screenStream = null;
+        
+        // Geniş ekranı gizle
+        const display = document.getElementById('screen-share-display');
+        if (display) {
+            display.classList.add('hidden');
+            display.innerHTML = '';
+        }
+
+        console.log("Ekran paylaşımı durduruldu.");
+    }
+};
+
 export const leaveVoiceChannel = async (channelId) => {
     const user = auth.currentUser;
     if (!user) return;
 
     console.log(`🔇 Kanaldan ayrılıyor: ${channelId}`);
     
+    // Ekran paylaşımını durdur
+    stopScreenShare();
+
+    // Dinleyicileri temizle
+    if (unsubscribeOffers) {
+        unsubscribeOffers();
+        unsubscribeOffers = null;
+    }
+
     // Firestore'dan üyelik kaydını sil
     await deleteDoc(doc(db, 'channels', channelId, 'voice_members', user.uid));
 

@@ -21,7 +21,7 @@ import {
     onValue as onRtdbValue 
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-import { joinVoiceChannel, leaveVoiceChannel } from './voice.js';
+import { joinVoiceChannel, leaveVoiceChannel, startScreenShare, stopScreenShare } from './voice.js';
 import { rtdb } from './firebase.config.js';
 
 import { 
@@ -39,11 +39,12 @@ let unsubscribeChannels = null;
 let unsubscribeMembers = null;
 let currentVoiceChannelId = null;
 
-const messageList = document.getElementById('message-list');
+const messageList = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const chatHeaderName = document.getElementById('active-channel-name');
 const serverListContainer = document.getElementById('server-list');
 const textChannelsContainer = document.getElementById('text-channels-container');
+const voiceChannelsContainer = document.getElementById('voice-channels-container');
 const memberListContainer = document.getElementById('member-list-container');
 const activeServerName = document.getElementById('active-server-name');
 const inviteBox = document.getElementById('invite-box');
@@ -139,13 +140,11 @@ const renderMessage = (data, id) => {
     
     const msgHtml = `
         <div class="message-item" id="${id}" style="display: flex; gap: 16px; margin-bottom: 16px;">
-            <img src="${data.userPhoto || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" 
-                 onclick='window.openUserProfile({username: "${data.username}", photoURL: "${data.userPhoto}", status: "online"})'
+            <img class="msg-avatar" src="${data.userPhoto || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" 
                  style="width: 40px; height: 40px; border-radius: 50%; cursor: pointer;">
             <div>
                 <div style="display: flex; gap: 8px; align-items: baseline;">
-                    <span style="font-weight: bold; color: #fff; cursor: pointer;" 
-                          onclick='window.openUserProfile({username: "${data.username}", photoURL: "${data.userPhoto}", status: "online"})'>
+                    <span class="msg-username" style="font-weight: bold; color: #fff; cursor: pointer;">
                         ${data.username}
                     </span>
                     <span style="font-size: 12px; color: var(--text-secondary);">${time}</span>
@@ -156,6 +155,12 @@ const renderMessage = (data, id) => {
         </div>
     `;
     messageList.insertAdjacentHTML('beforeend', msgHtml);
+    
+    // Güvenli Tıklama Dinleyicileri (CSP Friendly)
+    const item = messageList.lastElementChild;
+    const profileOpen = () => window.openUserProfile({username: data.username, photoURL: data.userPhoto});
+    item.querySelector('.msg-avatar').addEventListener('click', profileOpen);
+    item.querySelector('.msg-username').addEventListener('click', profileOpen);
 };
 
 // --- EVENT LISTENERS ---
@@ -253,11 +258,13 @@ const listenToChannels = (serverId) => {
     
     unsubscribeChannels = onSnapshot(q, (snapshot) => {
         textChannelsContainer.innerHTML = '';
+        voiceChannelsContainer.innerHTML = '';
         snapshot.docs.forEach((doc, index) => {
-            renderChannelItem(doc.data(), doc.id);
-            // Auto switch to first channel if not set
-            if (index === 0 && !currentChannelId) {
-                switchChannel(doc.id, doc.data().name, doc.data().type);
+            const data = doc.data();
+            renderChannelItem(data, doc.id);
+            // Auto switch to first text channel if not set
+            if (index === 0 && !currentChannelId && data.type === 'text') {
+                switchChannel(doc.id, data.name, data.type);
             }
         });
     });
@@ -333,9 +340,7 @@ const listenToVoiceParticipants = (channelId) => {
 
 const renderVoiceParticipant = (data) => {
     const html = `
-        <div class="voice-card" data-uid="${data.uid}" 
-             onclick='window.openUserProfile(${JSON.stringify(data)})'
-             style="cursor: pointer;">
+        <div class="voice-card" data-uid="${data.uid}" style="cursor: pointer;">
             <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" alt="u">
             <span>${data.username}</span>
             <div class="voice-status-icons">
@@ -344,6 +349,11 @@ const renderVoiceParticipant = (data) => {
         </div>
     `;
     voiceGrid.insertAdjacentHTML('beforeend', html);
+    
+    // Güvenli Tıklama Dinleyicisi
+    voiceGrid.lastElementChild.addEventListener('click', () => {
+        window.openUserProfile(data);
+    });
 };
 
 const listenToMembers = (serverId) => {
@@ -413,9 +423,14 @@ const renderChannelItem = async (data, id) => {
             ` : ''}
         </div>
     `;
-    textChannelsContainer.insertAdjacentHTML('beforeend', html);
     
-    const item = textChannelsContainer.lastElementChild;
+    if (data.type === 'voice') {
+        voiceChannelsContainer.insertAdjacentHTML('beforeend', html);
+    } else {
+        textChannelsContainer.insertAdjacentHTML('beforeend', html);
+    }
+    
+    const item = data.type === 'voice' ? voiceChannelsContainer.lastElementChild : textChannelsContainer.lastElementChild;
     item.addEventListener('click', (e) => {
         if (!e.target.closest('.channel-actions')) switchChannel(id, data.name, data.type);
     });
@@ -430,18 +445,194 @@ const renderChannelItem = async (data, id) => {
 
 const renderMemberItem = (data) => {
     const html = `
-        <div class="member-item" data-uid="${data.uid}" onclick='window.openUserProfile(${JSON.stringify(data)})' style="cursor: pointer;">
+        <div class="member-item" data-uid="${data.uid}" style="cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; transition: 0.2s;">
             <div style="position: relative;">
                 <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" alt="u" style="width: 32px; height: 32px; border-radius: 50%;">
-                <div class="status-dot" style="position: absolute; bottom: 0; right: 0; width: 10px; height: 10px; border-radius: 50%; background: #999; border: 2px solid var(--bg-members);"></div>
+                <div class="status-dot" style="position: absolute; bottom: 0; right: 0; width: 10px; height: 10px; border-radius: 50%; background: #999; border: 2px solid var(--bg-deep);"></div>
             </div>
-            <span>${data.username}</span>
+            <span style="font-size: 14px; font-weight: 500;">${data.username}</span>
         </div>
     `;
     memberListContainer.insertAdjacentHTML('beforeend', html);
+    
+    // Güvenli Tıklama Dinleyicisi
+    memberListContainer.lastElementChild.addEventListener('click', () => {
+        window.openUserProfile(data);
+    });
 };
 
-// Auth başarısından sonra mesajları dinlemeye başla
-window.addEventListener('auth-success', () => {
+// Auth başarısından sonra kapıları aç (UI Sync)
+window.addEventListener('auth-success', (e) => {
+    const authOverlay = document.getElementById('auth-overlay');
+    const appContainer = document.getElementById('app-container');
+    const nameEl = document.getElementById('current-user-name');
+    const pfpEl = document.getElementById('current-user-avatar');
+
+    if (authOverlay) authOverlay.classList.add('hidden');
+    if (appContainer) appContainer.classList.remove('hidden');
+
+    const user = e.detail;
+    if (nameEl) nameEl.innerText = user.displayName || user.username || "Kullanıcı";
+    if (pfpEl) pfpEl.src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=random`;
+
     listenToServers();
+});
+
+// Oturum kapatıldığında giriş ekranına dön
+window.addEventListener('auth-logout', () => {
+    document.getElementById('auth-overlay').classList.remove('hidden');
+    document.getElementById('app-container').classList.add('hidden');
+});
+
+// Ses kanalından ayrılma butonu tetiklendiğinde
+window.addEventListener('leave-voice', async () => {
+    if (currentVoiceChannelId) {
+        await leaveVoiceChannel(currentVoiceChannelId);
+        
+        // UI'yı metin kanalı moduna çek (aktif olan son metin kanalına dönebiliriz veya boş bırakabiliriz)
+        // Şimdilik sadece ses alanını gizleyip mesaj listesini gösterelim
+        messageList.classList.remove('hidden');
+        messageInputContainer.classList.remove('hidden');
+        voiceArea.classList.add('hidden');
+        
+        chatHeaderName.innerText = "Sohbet";
+        currentVoiceChannelId = null;
+        if (unsubscribeVoiceMembers) unsubscribeVoiceMembers();
+    }
+});
+
+// --- GLOBAL BUTTON LISTENERS ---
+
+// Metin Kanalı Ekleme (+)
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('#add-text-channel-btn');
+    if (btn) {
+        const name = prompt("Yeni metin kanalı adı:");
+        if (name) await createChannel(name, 'text');
+    }
+});
+
+// Ses Kanalı Ekleme (+)
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('#add-voice-channel-btn');
+    if (btn) {
+        const name = prompt("Yeni ses kanalı adı:");
+        if (name) await createChannel(name, 'voice');
+    }
+});
+
+// Sunucu Ekleme
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#add-server-btn');
+    if (btn) {
+        const name = prompt("Yeni sunucu adı:");
+        if (name) {
+            createServer(name).then(() => listenToServers());
+        }
+    }
+});
+
+// Davetle Katılma (Keşfet)
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#explore-btn');
+    if (btn) {
+        const code = prompt("Katılmak istediğiniz sunucunun davet kodunu girin:");
+        if (code) {
+            joinServer(code).then(() => listenToServers()).catch(err => alert(err.message));
+        }
+    }
+});
+
+// Ses Ayarları
+let isMuted = false;
+let isDeafened = false;
+
+document.addEventListener('click', (e) => {
+    const micBtn = e.target.closest('#mic-btn');
+    if (micBtn) {
+        isMuted = !isMuted;
+        const icon = isMuted ? 'mic-off' : 'mic';
+        micBtn.innerHTML = `<i data-lucide="${icon}"></i>`;
+        micBtn.style.color = isMuted ? 'var(--error-color)' : 'var(--text-secondary)';
+        lucide.createIcons();
+    }
+
+    const deafBtn = e.target.closest('#deafen-btn');
+    if (deafBtn) {
+        isDeafened = !isDeafened;
+        // Lucide'de headphones-off olmadığı için aynı ikonu tutup rengini değiştiriyoruz
+        deafBtn.innerHTML = `<i data-lucide="headphones"></i>`;
+        deafBtn.style.color = isDeafened ? 'var(--error-color)' : 'var(--text-secondary)';
+        lucide.createIcons();
+    }
+
+    const settingsBtn = e.target.closest('#settings-btn');
+    const profileBtn = e.target.closest('#user-profile-btn');
+    if (settingsBtn || profileBtn) {
+        const user = auth.currentUser;
+        if (user && window.openUserProfile) {
+            window.openUserProfile({
+                uid: user.uid,
+                username: user.displayName || user.username || "Kullanıcı",
+                photoURL: user.photoURL
+            });
+        }
+    }
+
+    // --- SES KANALI AKSİYONLARI ---
+    
+    // Ses Kanalı Mikrofonu
+    const voiceMic = e.target.closest('#voice-mic-active');
+    if (voiceMic) {
+        voiceMic.classList.toggle('muted');
+        const isMute = voiceMic.classList.contains('muted');
+        voiceMic.innerHTML = `<i data-lucide="${isMute ? 'mic-off' : 'mic'}"></i>`;
+        voiceMic.style.color = isMute ? 'var(--error-color)' : 'white';
+        lucide.createIcons();
+    }
+
+    // Ses Kanalı Ekran Paylaşımı
+    const voiceScreen = e.target.closest('#voice-screen-share');
+    if (voiceScreen) {
+        voiceScreen.classList.toggle('sharing');
+        const isSharing = voiceScreen.classList.contains('sharing');
+        
+        if (isSharing) {
+            startScreenShare().then(success => {
+                if (!success) {
+                    voiceScreen.classList.remove('sharing');
+                    showToast("Ekran paylaşımı başlatılamadı.", "error");
+                } else {
+                    voiceScreen.style.color = 'var(--brand-color)';
+                    showToast("Ekran paylaşımı başladı!", "success");
+                }
+            });
+        } else {
+            stopScreenShare();
+            voiceScreen.style.color = 'white';
+            showToast("Ekran paylaşımı durduruldu.", "info");
+        }
+    }
+
+    // Ses Kanalı Ayrılma
+    const voiceLeave = e.target.closest('#disconnect-voice-btn');
+    if (voiceLeave) {
+        window.dispatchEvent(new CustomEvent('leave-voice'));
+        showToast("Ses kanalından ayrıldınız.", "info");
+    }
+
+    // Ses Kanalı Ayarları Modalı Aç
+    const voiceSets = e.target.closest('#voice-settings-active');
+    if (voiceSets) {
+        document.getElementById('voice-settings-modal').classList.remove('hidden');
+        lucide.createIcons();
+    }
+
+    // Ses Kanalı Ayarları Kapat (X veya Kaydet)
+    if (e.target.closest('#close-voice-settings') || e.target.closest('#save-voice-settings')) {
+        document.getElementById('voice-settings-modal').classList.add('hidden');
+        if (e.target.closest('#save-voice-settings')) {
+            showToast("Ses ayarları başarıyla kaydedildi!", "success");
+        }
+    }
 });
