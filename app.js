@@ -41,7 +41,7 @@ let currentVoiceChannelId = null;
 
 const messageList = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
-const chatHeaderName = document.getElementById('active-channel-name');
+const chatHeaderName = document.getElementById('current-channel-name');
 const serverListContainer = document.getElementById('server-list');
 const textChannelsContainer = document.getElementById('text-channels-container');
 const voiceChannelsContainer = document.getElementById('voice-channels-container');
@@ -49,6 +49,7 @@ const memberListContainer = document.getElementById('member-list-container');
 const activeServerName = document.getElementById('active-server-name');
 const inviteBox = document.getElementById('invite-box');
 const currentInviteCode = document.getElementById('current-invite-code');
+const headerInviteCode = document.getElementById('header-invite-code');
 
 const voiceArea = document.getElementById('voice-area');
 const voiceGrid = document.getElementById('voice-grid');
@@ -173,23 +174,26 @@ chatInput.addEventListener('keypress', (e) => {
 
 // --- SERVER & CHANNEL FUNCTIONS ---
 
-export const createServer = async (name, iconFile = null) => {
+export const createServer = async (serverName) => {
     const user = auth.currentUser;
-    let iconURL = null;
-    if (iconFile) iconURL = await uploadFile(iconFile);
-
-    const inviteCode = Math.random().toString(36).substring(2, 9);
-
-    const serverRef = await addDoc(collection(db, 'servers'), {
-        name,
-        ownerId: user.uid,
-        members: [user.uid],
-        iconURL: iconURL,
-        inviteCode: inviteCode,
-        createdAt: serverTimestamp()
+    const serverRef = doc(collection(db, 'servers'));
+    await setDoc(serverRef, {
+        name: serverName,
+        inviteCode: serverRef.id.substring(0, 6).toUpperCase(),
+        ownerUid: user.uid,
+        createdAt: Date.now(),
+        members: [user.uid] // Eski mantıkla uyum için
     });
 
-    // Create default channel
+    // SUNUCU ÜYE LİSTESİNE KENDİNİ EKLE
+    await setDoc(doc(db, 'servers', serverRef.id, 'members', user.uid), {
+        uid: user.uid,
+        username: user.displayName,
+        photoURL: user.photoURL,
+        joinedAt: Date.now()
+    });
+
+    // Default channel
     await addDoc(collection(db, 'channels'), {
         serverId: serverRef.id,
         name: 'genel',
@@ -203,16 +207,26 @@ export const createServer = async (name, iconFile = null) => {
 export const joinServer = async (inviteCode) => {
     const user = auth.currentUser;
     const q = query(collection(db, 'servers'), where('inviteCode', '==', inviteCode));
-    const querySnapshot = await getDocs(q); // getDocs needs to be imported
+    const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) throw new Error("Geçersiz davet kodu!");
 
-    const serverDoc = querySnapshot.docs[0];
-    await updateDoc(doc(db, 'servers', serverDoc.id), {
+    const serverId = querySnapshot.docs[0].id;
+    
+    // Sunucu ana dökümanına üye olarak ekle
+    await updateDoc(doc(db, 'servers', serverId), {
         members: arrayUnion(user.uid)
     });
+
+    // ÖZEL ÜYE LİSTESİNE EKLE
+    await setDoc(doc(db, 'servers', serverId, 'members', user.uid), {
+        uid: user.uid,
+        username: user.displayName,
+        photoURL: user.photoURL,
+        joinedAt: Date.now()
+    });
     
-    return serverDoc.id;
+    return serverId;
 };
 
 export const listenToServers = () => {
@@ -233,14 +247,20 @@ export const listenToServers = () => {
     });
 };
 
-export const switchServer = (serverId, serverData) => {
+export const switchServer = async (serverId, serverData) => {
     currentServerId = serverId;
     window.lastActiveServerId = serverId;
     activeServerName.innerText = serverData.name;
     
-    // Show Invite Box
+    // PATRON KONTROLÜ (UI BUTONLARI İÇİN)
+    const isOwner = serverData.ownerUid === auth.currentUser.uid;
+    const addBtns = document.querySelectorAll('#add-text-channel-btn, #add-voice-channel-btn');
+    addBtns.forEach(btn => btn.style.display = isOwner ? 'flex' : 'none');
+
+    // Show Invite Boxes
     inviteBox.classList.remove('hidden');
-    currentInviteCode.innerText = serverData.inviteCode;
+    if(currentInviteCode) currentInviteCode.innerText = serverData.inviteCode;
+    if(headerInviteCode) headerInviteCode.innerText = serverData.inviteCode;
 
     listenToChannels(serverId);
     listenToMembers(serverId);
@@ -283,6 +303,20 @@ export const createChannel = async (name, type = 'text') => {
 export const deleteChannel = async (channelId) => {
     if (!confirm("Bu kanalı silmek istediğinizden emin misiniz?")) return;
     await deleteDoc(doc(db, 'channels', channelId));
+};
+export const kickMember = async (uid) => {
+    if (!currentServerId) return;
+    if (!confirm("Bu üyeyi sunucudan atmak istediğinizden emin misiniz?")) return;
+    
+    // 1. Sunucu ana listesinden sil
+    await updateDoc(doc(db, 'servers', currentServerId), {
+        members: arrayRemove(uid)
+    });
+    
+    // 2. Özel üye listesinden (subcollection) sil
+    await deleteDoc(doc(db, 'servers', currentServerId, 'members', uid));
+    
+    showToast("Üye başarıyla atıldı.", "info");
 };
 
 export const renameChannel = async (channelId, oldName) => {
@@ -359,22 +393,14 @@ const renderVoiceParticipant = (data) => {
 const listenToMembers = (serverId) => {
     if (unsubscribeMembers) unsubscribeMembers();
     
-    // Member listesi: Tüm kullanıcıları göster
-    const q = query(collection(db, 'users'));
+    // SADECE BU SUNUCUNUN ÜYELERİNİ DİNLE
+    const membersRef = collection(db, 'servers', serverId, 'members');
     
-    unsubscribeMembers = onSnapshot(q, (snapshot) => {
+    unsubscribeMembers = onSnapshot(membersRef, (snapshot) => {
         memberListContainer.innerHTML = '';
         snapshot.docs.forEach(docSnap => {
             const userData = docSnap.data();
-            renderMemberItem(userData);
-            
-            // HER ÜYE İÇİN RTDB'DEKİ GERÇEK ZAMANLI DURUMU DİNLE
-            const userStatusPath = rtdbRef(rtdb, '/status/' + userData.uid);
-            onRtdbValue(userStatusPath, (snap) => {
-                const statusData = snap.val();
-                const state = statusData ? statusData.state : 'offline';
-                updateMemberStatusUI(userData.uid, state);
-            });
+            renderMemberItem(userData, serverId);
         });
     });
 };
@@ -409,7 +435,7 @@ const renderChannelItem = async (data, id) => {
     
     // Check if user is owner to show management icons
     const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
-    const isOwner = serverDoc.exists() && serverDoc.data().ownerId === auth.currentUser.uid;
+    const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === auth.currentUser.uid;
 
     const html = `
         <div class="channel-item" data-id="${id}" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; color: var(--text-secondary); ${activeStyle} position: relative;">
@@ -442,22 +468,37 @@ const renderChannelItem = async (data, id) => {
 
     lucide.createIcons();
 };
+const renderMemberItem = async (data, serverId) => {
+    // Patron mu? (Taç simgesi için)
+    const serverSnap = await getDoc(doc(db, 'servers', serverId));
+    const isOwner = serverSnap.exists() && serverSnap.data().ownerUid === data.uid;
 
-const renderMemberItem = (data) => {
+    // Şu anki kullanıcı patron mu?
+    const currentUserSnap = await getDoc(doc(db, 'servers', serverId));
+    const currentUserIsOwner = currentUserSnap.exists() && currentUserSnap.data().ownerUid === auth.currentUser.uid;
+
     const html = `
         <div class="member-item" data-uid="${data.uid}" style="cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; transition: 0.2s;">
             <div style="position: relative;">
                 <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" alt="u" style="width: 32px; height: 32px; border-radius: 50%;">
-                <div class="status-dot" style="position: absolute; bottom: 0; right: 0; width: 10px; height: 10px; border-radius: 50%; background: #999; border: 2px solid var(--bg-deep);"></div>
             </div>
-            <span style="font-size: 14px; font-weight: 500;">${data.username}</span>
+            <span style="font-size: 14px; font-weight: 500; flex: 1;">${data.username}</span>
+            ${isOwner ? `<i data-lucide="crown" style="width: 14px; color: gold;" title="Sunucu Sahibi"></i>` : ''}
+            ${currentUserIsOwner && data.uid !== auth.currentUser.uid ? `
+                <i data-lucide="user-minus" class="kick-btn" style="width: 14px; color: var(--error-color); cursor: pointer;" title="Sunucudan At"></i>
+            ` : ''}
         </div>
     `;
     memberListContainer.insertAdjacentHTML('beforeend', html);
+    lucide.createIcons();
     
-    // Güvenli Tıklama Dinleyicisi
-    memberListContainer.lastElementChild.addEventListener('click', () => {
-        window.openUserProfile(data);
+    const item = memberListContainer.lastElementChild;
+    item.addEventListener('click', (e) => {
+        if (e.target.closest('.kick-btn')) {
+            kickMember(data.uid);
+        } else {
+            window.openUserProfile(data);
+        }
     });
 };
 
@@ -639,5 +680,23 @@ document.addEventListener('click', (e) => {
         if (e.target.closest('#save-voice-settings')) {
             showToast("Ses ayarları başarıyla kaydedildi!", "success");
         }
+    }
+    // MOBİL MENÜ KONTROLLERİ
+    const sidebarToggle = e.target.closest('#mobile-sidebar-toggle');
+    if (sidebarToggle) {
+        document.body.classList.toggle('show-sidebar');
+        document.body.classList.remove('show-members');
+    }
+
+    const membersToggle = e.target.closest('#mobile-members-toggle');
+    if (membersToggle) {
+        document.body.classList.toggle('show-members');
+        document.body.classList.remove('show-sidebar');
+    }
+
+    // Ekranın herhangi bir yerine tıklandığında menüleri kapat (Chat alanı tıklandığında)
+    if (e.target.closest('#chat-messages') || e.target.closest('#chat-input')) {
+        document.body.classList.remove('show-sidebar');
+        document.body.classList.remove('show-members');
     }
 });

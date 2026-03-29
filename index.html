@@ -85,8 +85,14 @@
         <!-- MAIN CONTENT -->
         <div id="main-content">
             <div id="chat-header">
-                <i data-lucide="hash"></i>
-                <span id="active-channel-name">genel</span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div id="mobile-sidebar-toggle" class="mobile-only"><i data-lucide="menu"></i></div>
+                    <h3 id="current-channel-name">Galaksiye Hoş Geldiniz</h3>
+                </div>
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <span id="header-invite-code" title="Davet Kodu (Tıkla Kopyala)">#123456</span>
+                    <div id="mobile-members-toggle" class="mobile-only"><i data-lucide="users"></i></div>
+                </div>
             </div>
 
             <div id="chat-messages"></div>
