@@ -560,24 +560,68 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-// Sunucu Ekleme
+// Sunucu Ekleme Modalı Aç
 document.addEventListener('click', (e) => {
     const btn = e.target.closest('#add-server-btn');
     if (btn) {
-        const name = prompt("Yeni sunucu adı:");
-        if (name) {
-            createServer(name).then(() => listenToServers());
+        document.getElementById('create-server-modal').classList.remove('hidden');
+    }
+});
+
+// Keşfet Modalı Aç
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#explore-btn');
+    if (btn) {
+        document.getElementById('join-server-modal').classList.remove('hidden');
+    }
+});
+
+// MODALLARI KAPAT (X Butonları, İptal Butonları veya Boşluğa Tıklama)
+document.addEventListener('mousedown', (e) => {
+    const isCancelBtn = e.target.closest('#cancel-server-btn') || e.target.closest('#cancel-join-btn') || e.target.closest('#cancel-profile-btn');
+    const isCloseIcon = e.target.closest('.close-modal') || e.target.closest('#close-voice-settings');
+    const isOverlay = e.target.id.endsWith('-modal'); // Arka plana tıklandıysa (IDsı -modal ile bitenler)
+
+    if (isCancelBtn || isCloseIcon || isOverlay) {
+         const modals = document.querySelectorAll('[id$="-modal"]');
+         modals.forEach(m => m.classList.add('hidden'));
+    }
+});
+
+// SUNUCU KURMA (MODAL FINAL BUTONU)
+document.addEventListener('click', async (e) => {
+    if (e.target.closest('#create-server-final-btn')) {
+        const nameInput = document.getElementById('server-name-input');
+        const name = nameInput.value.trim();
+        if(!name) return showToast("Sunucu adı boş olamaz!", "error");
+        
+        try {
+            await createServer(name);
+            document.getElementById('create-server-modal').classList.add('hidden');
+            nameInput.value = '';
+            showToast("Güneş Sistemi'nde yeni bir sunucu doğdu!", "success");
+            listenToServers(); // Listeyi yenile
+        } catch(err) {
+            showToast(err.message, "error");
         }
     }
 });
 
-// Davetle Katılma (Keşfet)
-document.addEventListener('click', (e) => {
-    const btn = e.target.closest('#explore-btn');
-    if (btn) {
-        const code = prompt("Katılmak istediğiniz sunucunun davet kodunu girin:");
-        if (code) {
-            joinServer(code).then(() => listenToServers()).catch(err => alert(err.message));
+// SUNUCUYA KATILMA (MODAL FINAL BUTONU)
+document.addEventListener('click', async (e) => {
+    if (e.target.closest('#join-server-final-btn')) {
+        const inviteInput = document.getElementById('join-invite-input');
+        const code = inviteInput.value.trim();
+        if(!code) return showToast("Davet kodu girmelisin!", "error");
+        
+        try {
+            await joinServer(code);
+            document.getElementById('join-server-modal').classList.add('hidden');
+            inviteInput.value = '';
+            showToast("Yeni bir galaksiye giriş yaptın!", "success");
+            listenToServers(); // Listeyi yenile
+        } catch(err) {
+            showToast(err.message, "error");
         }
     }
 });
