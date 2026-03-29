@@ -356,7 +356,7 @@ body {
 /* --- RESPONSIVE MOBILE FIXES --- */
 .mobile-only { display: none; cursor: pointer; color: var(--text-secondary); }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .mobile-only { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
 
     /* Sidebars Hidden by Default on Mobile */
@@ -367,7 +367,7 @@ body {
         z-index: 5000;
         transition: 0.3s ease;
     }
-    #channel-sidebar {
+    #channels-sidebar {
         position: fixed !important;
         left: -240px;
         height: 100vh;
@@ -387,7 +387,7 @@ body {
 
     /* Active States (Show Sidebars) */
     body.show-sidebar #server-sidebar { left: 0; }
-    body.show-sidebar #channel-sidebar { left: 72px; }
+    body.show-sidebar #channels-sidebar { left: 72px; }
     body.show-members #member-list { right: 0; }
 
     #main-content {
