@@ -263,7 +263,7 @@ export const switchServer = async (serverId, serverData) => {
     if(headerInviteCode) headerInviteCode.innerText = serverData.inviteCode;
 
     listenToChannels(serverId);
-    listenToMembers(serverId);
+    listenToMembers(serverId, serverData.ownerUid);
     
     // Refresh Icons for active state
     document.querySelectorAll('.server-icon').forEach(icon => {
@@ -390,7 +390,7 @@ const renderVoiceParticipant = (data) => {
     });
 };
 
-const listenToMembers = (serverId) => {
+const listenToMembers = (serverId, ownerUid) => {
     if (unsubscribeMembers) unsubscribeMembers();
     
     // SADECE BU SUNUCUNUN ÜYELERİNİ DİNLE
@@ -400,7 +400,7 @@ const listenToMembers = (serverId) => {
         memberListContainer.innerHTML = '';
         snapshot.docs.forEach(docSnap => {
             const userData = docSnap.data();
-            renderMemberItem(userData, serverId);
+            renderMemberItem(userData, serverId, ownerUid);
         });
     });
 };
@@ -468,14 +468,12 @@ const renderChannelItem = async (data, id) => {
 
     lucide.createIcons();
 };
-const renderMemberItem = async (data, serverId) => {
+const renderMemberItem = (data, serverId, ownerUid) => {
     // Patron mu? (Taç simgesi için)
-    const serverSnap = await getDoc(doc(db, 'servers', serverId));
-    const isOwner = serverSnap.exists() && serverSnap.data().ownerUid === data.uid;
+    const isOwner = ownerUid === data.uid;
 
-    // Şu anki kullanıcı patron mu?
-    const currentUserSnap = await getDoc(doc(db, 'servers', serverId));
-    const currentUserIsOwner = currentUserSnap.exists() && currentUserSnap.data().ownerUid === auth.currentUser.uid;
+    // Şu anki kullanıcı patron mu? (Silme/Kick yetkisi için)
+    const currentUserIsOwner = ownerUid === auth.currentUser.uid;
 
     const html = `
         <div class="member-item" data-uid="${data.uid}" style="cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; transition: 0.2s;">
