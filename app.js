@@ -536,6 +536,10 @@ window.openUserProfile = async (data) => {
     // Önce modalı aç — async işlemler sonradan dolduracak
     if (currentUser && currentUser.uid === data.uid) {
         editBtn.classList.remove('hidden');
+        // Edit inputlarını da dolduralım
+        document.getElementById('edit-profile-pfp-input').value = data.photoURL || '';
+        document.getElementById('edit-profile-name-input').value = data.username || '';
+        document.getElementById('edit-profile-bio-input').value = data.bio || '';
     } else {
         editBtn.classList.add('hidden');
     }
