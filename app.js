@@ -253,6 +253,19 @@ export const switchServer = async (serverId, serverData) => {
     currentServerId = serverId;
     window.lastActiveServerId = serverId;
     activeServerName.innerText = serverData.name;
+
+    // ownerUid eksikse mevcut kullanıcıyı otomatik owner yap (eski sunucular için)
+    if (!serverData.ownerUid && auth.currentUser) {
+        try {
+            await updateDoc(doc(db, 'servers', serverId), {
+                ownerUid: auth.currentUser.uid
+            });
+            serverData.ownerUid = auth.currentUser.uid;
+            console.log('✅ ownerUid otomatik eklendi:', auth.currentUser.uid);
+        } catch(e) {
+            console.warn('ownerUid eklenemedi:', e);
+        }
+    }
     
     // Reset Settings UI
     document.getElementById('server-settings-modal').classList.add('hidden');
