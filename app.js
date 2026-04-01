@@ -35,6 +35,7 @@ import {
 // --- STATE MANAGEMENT ---
 let currentServerId = null; 
 let currentChannelId = null; 
+let currentServerOwnerUid = null;
 let unsubscribeMessages = null;
 let unsubscribeServers = null;
 let unsubscribeChannels = null;
@@ -266,6 +267,9 @@ export const switchServer = async (serverId, serverData) => {
             console.warn('ownerUid eklenemedi:', e);
         }
     }
+
+    // Owner UID'ini state'e kaydet
+    currentServerOwnerUid = serverData.ownerUid || null;
     
     // Reset Settings UI
     document.getElementById('server-settings-modal').classList.add('hidden');
@@ -545,31 +549,31 @@ window.openUserProfile = async (data) => {
     document.getElementById('profile-edit-mode').classList.add('hidden');
 
     // Sunucu bağlamı yoksa rol yönetimini atla
-    if (!currentServerId || !data.uid) return;
+    if (!currentServerId || !data.uid || !currentUser) return;
 
-    try {
-        const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
-        const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === currentUser.uid;
+    // State'teki ownerUid'i kullan — ek Firestore çağrısı yok
+    const isOwner = currentServerOwnerUid === currentUser.uid;
 
-        if (isOwner && data.uid !== currentUser.uid) {
+    if (isOwner && data.uid !== currentUser.uid) {
+        try {
             const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
             
             const rolePanel = document.createElement('div');
             rolePanel.id = 'profile-role-panel';
-            rolePanel.style.marginTop = '20px';
-            rolePanel.style.textAlign = 'left';
+            rolePanel.style.cssText = 'margin-top: 20px; text-align: left; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;';
             
-            let roleHtml = '<label style="font-size: 11px; color: var(--text-secondary);">ROLLERİ YÖNET</label><div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">';
+            let roleHtml = '<label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 8px;">ROLLERİ YÖNET</label><div style="display: flex; flex-wrap: wrap; gap: 8px;">';
             
             rolesSnap.forEach(rDoc => {
                 const role = rDoc.data();
                 const hasRole = (data.roles || []).includes(rDoc.id);
-                roleHtml += `
-                    <div class="role-pill" data-id="${rDoc.id}" style="padding: 4px 10px; border-radius: 20px; border: 1px solid ${role.color}; font-size: 12px; cursor: pointer; color: ${hasRole ? 'white' : role.color}; background: ${hasRole ? role.color : 'transparent'};">
-                        ${role.name}
-                    </div>
-                `;
+                roleHtml += `<div class="role-pill" data-id="${rDoc.id}" style="padding: 4px 10px; border-radius: 20px; border: 1px solid ${role.color}; font-size: 12px; cursor: pointer; color: ${hasRole ? 'white' : role.color}; background: ${hasRole ? role.color : 'transparent'}; transition: 0.2s;">${role.name}</div>`;
             });
+            
+            if (rolesSnap.empty) {
+                roleHtml += '<span style="font-size: 12px; color: var(--text-secondary);">Henüz rol oluşturulmamış. Sunucu Ayarları → Roller</span>';
+            }
+            
             roleHtml += '</div>';
             rolePanel.innerHTML = roleHtml;
 
@@ -582,20 +586,23 @@ window.openUserProfile = async (data) => {
             rolePanel.querySelectorAll('.role-pill').forEach(pill => {
                 pill.onclick = async () => {
                     const rid = pill.dataset.id;
-                    let userRoles = data.roles || [];
+                    let userRoles = data.roles ? [...data.roles] : [];
                     if (userRoles.includes(rid)) {
                         userRoles = userRoles.filter(id => id !== rid);
+                        pill.style.background = 'transparent';
+                        pill.style.color = pill.style.borderColor;
                     } else {
                         userRoles.push(rid);
+                        pill.style.background = pill.style.borderColor;
+                        pill.style.color = 'white';
                     }
+                    data.roles = userRoles;
                     await assignRoleToMember(data.uid, userRoles);
-                    pill.style.background = userRoles.includes(rid) ? pill.style.borderColor : 'transparent';
-                    pill.style.color = userRoles.includes(rid) ? 'white' : pill.style.borderColor;
                 };
             });
+        } catch (err) {
+            console.warn("Rol paneli yüklenemedi:", err);
         }
-    } catch (err) {
-        console.warn("Rol paneli yüklenemedi:", err);
     }
 };
 
