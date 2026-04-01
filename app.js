@@ -516,64 +516,74 @@ window.openUserProfile = async (data) => {
     name.innerText = data.username;
     bio.innerText = data.bio || "Henüz bir biyografi eklenmemiş.";
 
-    // Role Section in Profile
-    const rolePanel = document.createElement('div');
-    rolePanel.id = 'profile-role-panel';
-    rolePanel.style.marginTop = '20px';
-    rolePanel.style.textAlign = 'left';
-    
-    // Clear old panel if exists
-    const oldPanel = document.getElementById('profile-role-panel');
-    if (oldPanel) oldPanel.remove();
-    
-    // Check if current user is owner to show "Assign Roles"
-    const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
-    const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === currentUser.uid;
-
-    if (isOwner && data.uid !== currentUser.uid) {
-        const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
-        let roleHtml = '<label style="font-size: 11px; color: var(--text-secondary);">ROLLERİ YÖNET</label><div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">';
-        
-        rolesSnap.forEach(rDoc => {
-            const role = rDoc.data();
-            const hasRole = (data.roles || []).includes(rDoc.id);
-            roleHtml += `
-                <div class="role-pill" data-id="${rDoc.id}" style="padding: 4px 10px; border-radius: 20px; border: 1px solid ${role.color}; font-size: 12px; cursor: pointer; color: ${hasRole ? 'white' : role.color}; background: ${hasRole ? role.color : 'transparent'};">
-                    ${role.name}
-                </div>
-            `;
-        });
-        roleHtml += '</div>';
-        rolePanel.innerHTML = roleHtml;
-        document.getElementById('profile-view-mode').insertBefore(rolePanel, document.getElementById('open-edit-mode-btn'));
-        
-        // Add click events to pills
-        rolePanel.querySelectorAll('.role-pill').forEach(pill => {
-            pill.onclick = async () => {
-                const rid = pill.dataset.id;
-                let userRoles = data.roles || [];
-                if (userRoles.includes(rid)) {
-                    userRoles = userRoles.filter(id => id !== rid);
-                } else {
-                    userRoles.push(rid);
-                }
-                await assignRoleToMember(data.uid, userRoles);
-                pill.style.background = userRoles.includes(rid) ? pill.style.borderColor : 'transparent';
-                pill.style.color = userRoles.includes(rid) ? 'white' : pill.style.borderColor;
-            };
-        });
-    }
-
-    // Custom Profile Logic
+    // Önce modalı aç — async işlemler sonradan dolduracak
     if (currentUser && currentUser.uid === data.uid) {
         editBtn.classList.remove('hidden');
     } else {
         editBtn.classList.add('hidden');
     }
 
+    // Eski rol panelini temizle
+    const oldPanel = document.getElementById('profile-role-panel');
+    if (oldPanel) oldPanel.remove();
+
     document.getElementById('profile-modal-overlay').classList.remove('hidden');
     document.getElementById('profile-view-mode').classList.remove('hidden');
     document.getElementById('profile-edit-mode').classList.add('hidden');
+
+    // Sunucu bağlamı yoksa rol yönetimini atla
+    if (!currentServerId || !data.uid) return;
+
+    try {
+        const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
+        const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === currentUser.uid;
+
+        if (isOwner && data.uid !== currentUser.uid) {
+            const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
+            
+            const rolePanel = document.createElement('div');
+            rolePanel.id = 'profile-role-panel';
+            rolePanel.style.marginTop = '20px';
+            rolePanel.style.textAlign = 'left';
+            
+            let roleHtml = '<label style="font-size: 11px; color: var(--text-secondary);">ROLLERİ YÖNET</label><div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">';
+            
+            rolesSnap.forEach(rDoc => {
+                const role = rDoc.data();
+                const hasRole = (data.roles || []).includes(rDoc.id);
+                roleHtml += `
+                    <div class="role-pill" data-id="${rDoc.id}" style="padding: 4px 10px; border-radius: 20px; border: 1px solid ${role.color}; font-size: 12px; cursor: pointer; color: ${hasRole ? 'white' : role.color}; background: ${hasRole ? role.color : 'transparent'};">
+                        ${role.name}
+                    </div>
+                `;
+            });
+            roleHtml += '</div>';
+            rolePanel.innerHTML = roleHtml;
+
+            const viewMode = document.getElementById('profile-view-mode');
+            const editModeBtn = document.getElementById('open-edit-mode-btn');
+            if (viewMode && editModeBtn) {
+                viewMode.insertBefore(rolePanel, editModeBtn);
+            }
+
+            rolePanel.querySelectorAll('.role-pill').forEach(pill => {
+                pill.onclick = async () => {
+                    const rid = pill.dataset.id;
+                    let userRoles = data.roles || [];
+                    if (userRoles.includes(rid)) {
+                        userRoles = userRoles.filter(id => id !== rid);
+                    } else {
+                        userRoles.push(rid);
+                    }
+                    await assignRoleToMember(data.uid, userRoles);
+                    pill.style.background = userRoles.includes(rid) ? pill.style.borderColor : 'transparent';
+                    pill.style.color = userRoles.includes(rid) ? 'white' : pill.style.borderColor;
+                };
+            });
+        }
+    } catch (err) {
+        console.warn("Rol paneli yüklenemedi:", err);
+    }
 };
 
 const listenToMembers = (serverId, ownerUid) => {
