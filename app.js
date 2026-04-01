@@ -254,15 +254,18 @@ export const switchServer = async (serverId, serverData) => {
     window.lastActiveServerId = serverId;
     activeServerName.innerText = serverData.name;
     
-    // PATRON KONTROLÜ (UI BUTONLARI İÇİN)
-    const isOwner = serverData.ownerUid === auth.currentUser.uid;
-    const addBtns = document.querySelectorAll('#add-text-channel-btn, #add-voice-channel-btn');
-    addBtns.forEach(btn => btn.style.display = isOwner ? 'flex' : 'none');
+    // Reset Settings UI
+    document.getElementById('server-settings-modal').classList.add('hidden');
+    
+    // PATRON / YETKİ KONTROLÜ (Sidebar '+' butonları için)
+    const canAddChannels = await checkPermission('manage_channels');
+    document.querySelectorAll('.add-chan-plus').forEach(btn => {
+        btn.style.display = canAddChannels ? 'flex' : 'none';
+    });
 
-    // Show Invite Boxes
+    // Show Invite Box
     inviteBox.classList.remove('hidden');
-    if(currentInviteCode) currentInviteCode.innerText = serverData.inviteCode;
-    if(headerInviteCode) headerInviteCode.innerText = serverData.inviteCode;
+    currentInviteCode.innerText = serverData.inviteCode;
 
     listenToChannels(serverId);
     listenToMembers(serverId, serverData.ownerUid);
@@ -271,6 +274,105 @@ export const switchServer = async (serverId, serverData) => {
     document.querySelectorAll('.server-icon').forEach(icon => {
         icon.classList.remove('active');
         if(icon.dataset.id === serverId) icon.classList.add('active');
+    });
+};
+
+// --- ROLE & PERMISSION SYSTEM ---
+
+export const checkPermission = async (perm) => {
+    if (!currentServerId || !auth.currentUser) return false;
+    
+    // 1. Sunucu Sahibi her şeyi yapabilir
+    const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
+    if (!serverSnap.exists()) return false;
+    if (serverSnap.data().ownerUid === auth.currentUser.uid) return true;
+    
+    // 2. Üyenin rollerini al
+    const memberSnap = await getDoc(doc(db, 'servers', currentServerId, 'members', auth.currentUser.uid));
+    if (!memberSnap.exists()) return false;
+    
+    const roleIds = memberSnap.data().roles || [];
+    if (roleIds.length === 0) return false;
+    
+    // 3. Rollerdeki yetkileri kontrol et
+    for (const rid of roleIds) {
+        const roleSnap = await getDoc(doc(db, 'servers', currentServerId, 'roles', rid));
+        if (roleSnap.exists() && (roleSnap.data().permissions || []).includes(perm)) {
+            return true;
+        }
+    }
+    
+    return false;
+};
+
+export const createRole = async (name, color = '#c5a059') => {
+    if (!currentServerId) return;
+    const rolesRef = collection(db, 'servers', currentServerId, 'roles');
+    await addDoc(rolesRef, {
+        name,
+        color,
+        permissions: [],
+        createdAt: serverTimestamp()
+    });
+    showToast("Rol oluşturuldu!", "success");
+    loadRoles();
+};
+
+export const updateRolePermissions = async (roleId, permissions) => {
+    if (!currentServerId) return;
+    const roleRef = doc(db, 'servers', currentServerId, 'roles', roleId);
+    await updateDoc(roleRef, { permissions });
+    showToast("Yetkiler güncellendi!", "success");
+};
+
+export const deleteRole = async (roleId) => {
+    if (!currentServerId) return;
+    if (!confirm("Bu rolü silmek istediğinize emin misiniz?")) return;
+    await deleteDoc(doc(db, 'servers', currentServerId, 'roles', roleId));
+    showToast("Rol silindi.", "info");
+    loadRoles();
+};
+
+const loadRoles = async () => {
+    if (!currentServerId) return;
+    const rolesRef = collection(db, 'servers', currentServerId, 'roles');
+    const snap = await getDocs(rolesRef);
+    const roleList = document.getElementById('role-list');
+    roleList.innerHTML = '';
+    
+    snap.forEach(docSnap => {
+        const role = docSnap.data();
+        const html = `
+            <div class="role-item" data-id="${docSnap.id}">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 12px; height: 12px; border-radius: 50%; background: ${role.color};"></div>
+                    <span style="font-weight: 600;">${role.name}</span>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <i data-lucide="shield" class="edit-role-perms" style="width: 16px; cursor: pointer; color: var(--brand-color);"></i>
+                    <i data-lucide="trash-2" class="delete-role-btn" style="width: 16px; cursor: pointer; color: var(--error-color);"></i>
+                </div>
+            </div>
+        `;
+        roleList.insertAdjacentHTML('beforeend', html);
+        
+        const item = roleList.lastElementChild;
+        item.querySelector('.edit-role-perms').onclick = () => openRoleEditor(docSnap.id, role);
+        item.querySelector('.delete-role-btn').onclick = () => deleteRole(docSnap.id);
+    });
+    lucide.createIcons();
+};
+
+let editingRoleId = null;
+const openRoleEditor = (roleId, roleData) => {
+    editingRoleId = roleId;
+    document.getElementById('editing-role-name').innerText = `${roleData.name} Rolü Yetkileri`;
+    document.getElementById('role-editor').classList.remove('hidden');
+    
+    // Checkboxes sync
+    const checkboxes = document.querySelectorAll('#permissions-grid input');
+    checkboxes.forEach(cb => {
+        cb.checked = roleData.permissions.includes(cb.dataset.perm);
     });
 };
 
@@ -303,11 +405,13 @@ export const createChannel = async (name, type = 'text') => {
 };
 
 export const deleteChannel = async (channelId) => {
+    if (!(await checkPermission('manage_channels'))) return showToast("Bu işlem için yetkiniz yok!", "error");
     if (!confirm("Bu kanalı silmek istediğinizden emin misiniz?")) return;
     await deleteDoc(doc(db, 'channels', channelId));
 };
 export const kickMember = async (uid) => {
     if (!currentServerId) return;
+    if (!(await checkPermission('kick_members'))) return showToast("Bu işlem için yetkiniz yok!", "error");
     if (!confirm("Bu üyeyi sunucudan atmak istediğinizden emin misiniz?")) return;
     
     // 1. Sunucu ana listesinden sil
@@ -322,6 +426,7 @@ export const kickMember = async (uid) => {
 };
 
 export const renameChannel = async (channelId, oldName) => {
+    if (!(await checkPermission('manage_channels'))) return showToast("Bu işlem için yetkiniz yok!", "error");
     const newName = prompt("Yeni kanal adı:", oldName);
     if (newName && newName !== oldName) {
         await updateDoc(doc(db, 'channels', channelId), { name: newName });
@@ -390,6 +495,85 @@ const renderVoiceParticipant = (data) => {
     voiceGrid.lastElementChild.addEventListener('click', () => {
         window.openUserProfile(data);
     });
+};
+
+export const assignRoleToMember = async (uid, roleIds) => {
+    if (!currentServerId) return;
+    const memberRef = doc(db, 'servers', currentServerId, 'members', uid);
+    await updateDoc(memberRef, { roles: roleIds });
+    showToast("Roller güncellendi!", "success");
+};
+
+// Global User Profile Open Handler
+window.openUserProfile = async (data) => {
+    const pfp = document.getElementById('profile-modal-pfp');
+    const name = document.getElementById('profile-modal-name');
+    const bio = document.getElementById('profile-modal-bio');
+    const editBtn = document.getElementById('open-edit-mode-btn');
+    const currentUser = auth.currentUser;
+
+    pfp.src = data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`;
+    name.innerText = data.username;
+    bio.innerText = data.bio || "Henüz bir biyografi eklenmemiş.";
+
+    // Role Section in Profile
+    const rolePanel = document.createElement('div');
+    rolePanel.id = 'profile-role-panel';
+    rolePanel.style.marginTop = '20px';
+    rolePanel.style.textAlign = 'left';
+    
+    // Clear old panel if exists
+    const oldPanel = document.getElementById('profile-role-panel');
+    if (oldPanel) oldPanel.remove();
+    
+    // Check if current user is owner to show "Assign Roles"
+    const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
+    const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === currentUser.uid;
+
+    if (isOwner && data.uid !== currentUser.uid) {
+        const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
+        let roleHtml = '<label style="font-size: 11px; color: var(--text-secondary);">ROLLERİ YÖNET</label><div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">';
+        
+        rolesSnap.forEach(rDoc => {
+            const role = rDoc.data();
+            const hasRole = (data.roles || []).includes(rDoc.id);
+            roleHtml += `
+                <div class="role-pill" data-id="${rDoc.id}" style="padding: 4px 10px; border-radius: 20px; border: 1px solid ${role.color}; font-size: 12px; cursor: pointer; color: ${hasRole ? 'white' : role.color}; background: ${hasRole ? role.color : 'transparent'};">
+                    ${role.name}
+                </div>
+            `;
+        });
+        roleHtml += '</div>';
+        rolePanel.innerHTML = roleHtml;
+        document.getElementById('profile-view-mode').insertBefore(rolePanel, document.getElementById('open-edit-mode-btn'));
+        
+        // Add click events to pills
+        rolePanel.querySelectorAll('.role-pill').forEach(pill => {
+            pill.onclick = async () => {
+                const rid = pill.dataset.id;
+                let userRoles = data.roles || [];
+                if (userRoles.includes(rid)) {
+                    userRoles = userRoles.filter(id => id !== rid);
+                } else {
+                    userRoles.push(rid);
+                }
+                await assignRoleToMember(data.uid, userRoles);
+                pill.style.background = userRoles.includes(rid) ? pill.style.borderColor : 'transparent';
+                pill.style.color = userRoles.includes(rid) ? 'white' : pill.style.borderColor;
+            };
+        });
+    }
+
+    // Custom Profile Logic
+    if (currentUser && currentUser.uid === data.uid) {
+        editBtn.classList.remove('hidden');
+    } else {
+        editBtn.classList.add('hidden');
+    }
+
+    document.getElementById('profile-modal-overlay').classList.remove('hidden');
+    document.getElementById('profile-view-mode').classList.remove('hidden');
+    document.getElementById('profile-edit-mode').classList.add('hidden');
 };
 
 const listenToMembers = (serverId, ownerUid) => {
@@ -470,21 +654,26 @@ const renderChannelItem = async (data, id) => {
 
     lucide.createIcons();
 };
-const renderMemberItem = (data, serverId, ownerUid) => {
-    // Patron mu? (Taç simgesi için)
+const renderMemberItem = async (data, serverId, ownerUid) => {
     const isOwner = ownerUid === data.uid;
+    const canKick = await checkPermission('kick_members');
 
-    // Şu anki kullanıcı patron mu? (Silme/Kick yetkisi için)
-    const currentUserIsOwner = ownerUid === auth.currentUser.uid;
+    // Rol Rengi Belirleme
+    let nameColor = 'white';
+    if (data.roles && data.roles.length > 0) {
+        // En üstteki rolün rengini alalım (ilk rol)
+        const roleSnap = await getDoc(doc(db, 'servers', serverId, 'roles', data.roles[0]));
+        if (roleSnap.exists()) nameColor = roleSnap.data().color || 'white';
+    }
 
     const html = `
         <div class="member-item" data-uid="${data.uid}" style="cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; transition: 0.2s;">
             <div style="position: relative;">
                 <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" alt="u" style="width: 32px; height: 32px; border-radius: 50%;">
             </div>
-            <span style="font-size: 14px; font-weight: 500; flex: 1;">${data.username}</span>
+            <span style="font-size: 14px; font-weight: 500; flex: 1; color: ${nameColor};">${data.username}</span>
             ${isOwner ? `<i data-lucide="crown" style="width: 14px; color: gold;" title="Sunucu Sahibi"></i>` : ''}
-            ${currentUserIsOwner && data.uid !== auth.currentUser.uid ? `
+            ${canKick && data.uid !== auth.currentUser.uid && !isOwner ? `
                 <i data-lucide="user-minus" class="kick-btn" style="width: 14px; color: var(--error-color); cursor: pointer;" title="Sunucudan At"></i>
             ` : ''}
         </div>
@@ -632,7 +821,7 @@ document.addEventListener('click', async (e) => {
 let isMuted = false;
 let isDeafened = false;
 
-document.addEventListener('click', (e) => {
+document.addEventListener('click', async (e) => {
     const micBtn = e.target.closest('#mic-btn');
     if (micBtn) {
         isMuted = !isMuted;
@@ -657,8 +846,18 @@ document.addEventListener('click', (e) => {
     }
 
     const settingsBtn = e.target.closest('#settings-btn');
-    const profileBtn = e.target.closest('#user-profile-btn');
-    if (settingsBtn || profileBtn) {
+    const popover = document.getElementById('settings-popover');
+    if (settingsBtn) {
+        e.stopPropagation();
+        popover.classList.toggle('hidden');
+        lucide.createIcons();
+    } else {
+        // Herhangi bir yere tıklandığında popover'ı kapat
+        popover.classList.add('hidden');
+    }
+
+    const profileBtn = e.target.closest('#user-profile-btn') || e.target.closest('#open-profile-edit');
+    if (profileBtn) {
         const user = auth.currentUser;
         if (user && window.openUserProfile) {
             window.openUserProfile({
@@ -666,6 +865,20 @@ document.addEventListener('click', (e) => {
                 username: user.displayName || user.username || "Kullanıcı",
                 photoURL: user.photoURL
             });
+        }
+    }
+
+    const accSetsTrigger = e.target.closest('#open-account-settings');
+    if (accSetsTrigger) {
+        document.getElementById('account-settings-modal').classList.remove('hidden');
+    }
+
+    const logoutTrigger = e.target.closest('#logout-btn-trigger');
+    if (logoutTrigger) {
+        const { logout } = await import('./auth.js');
+        if(confirm("Oturumu kapatmak istediğinize emin misiniz?")) {
+            await logout(); 
+            window.location.reload();
         }
     }
 
@@ -744,3 +957,37 @@ document.addEventListener('click', (e) => {
         document.body.classList.remove('show-members');
     }
 });
+
+// SUNUCU AYARLARI TETİKLEYİCİ
+document.getElementById('server-header-btn').addEventListener('click', async () => {
+    if (!currentServerId) return;
+    const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
+    const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === auth.currentUser.uid;
+    
+    if (isOwner) {
+        document.getElementById('server-settings-modal').classList.remove('hidden');
+        loadRoles();
+    } else {
+        showToast("Sadece sunucu sahibi ayarlara erişebilir.", "error");
+    }
+});
+
+document.getElementById('close-server-settings').onclick = () => {
+    document.getElementById('server-settings-modal').classList.add('hidden');
+};
+
+document.getElementById('add-role-btn').onclick = () => {
+    const name = document.getElementById('new-role-name').value;
+    const color = document.getElementById('new-role-color').value;
+    if (name) createRole(name, color);
+};
+
+document.getElementById('save-role-perms-btn').onclick = async () => {
+    if (!editingRoleId) return;
+    const perms = [];
+    document.querySelectorAll('#permissions-grid input:checked').forEach(cb => {
+        perms.push(cb.dataset.perm);
+    });
+    await updateRolePermissions(editingRoleId, perms);
+    document.getElementById('role-editor').classList.add('hidden');
+};

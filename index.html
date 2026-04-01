@@ -8,6 +8,34 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="icon" href="logo.jpg" type="image/jpeg">
     <link rel="stylesheet" href="layout.css">
+    <style>
+        /* Server Settings Modal */
+        #server-settings-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #2f3136; z-index: 5000; color: white; display: flex;
+        }
+        .settings-sidebar {
+            width: 240px; background: #2f3136; padding: 60px 6px 60px 20px;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .settings-content {
+            flex: 1; background: #36393f; padding: 60px 40px; overflow-y: auto;
+        }
+        .settings-nav-item {
+            padding: 6px 10px; border-radius: 4px; cursor: pointer; color: #b9bbbe; font-size: 16px;
+        }
+        .settings-nav-item:hover, .settings-nav-item.active {
+            background: #393c43; color: white;
+        }
+        .role-item {
+            background: #2f3136; padding: 12px; border-radius: 4px; margin-bottom: 8px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .perm-checkbox {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+            padding: 10px; background: #2f3136; border-radius: 4px;
+        }
+    </style>
 </head>
 
 <body>
@@ -208,9 +236,25 @@
     <div id="account-settings-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 6000; display: flex; align-items: center; justify-content: center;">
         <div class="settings-card" style="width: 360px; text-align: center;">
             <h2 style="color: var(--brand-color); margin-bottom: 20px;">Hesap Ayarları</h2>
-            <p style="margin-bottom: 24px; color: var(--text-secondary);">Oturumu kapatmak istediğinize emin misiniz?</p>
-            <button id="logout-btn-modal" class="auth-btn" style="background: var(--error-color);">OTURUMU KAPAT</button>
-            <button id="cancel-settings-btn-2" style="background: transparent; border: none; color: var(--text-secondary); margin-top: 12px; cursor: pointer;">İptal</button>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 24px;">Gelecek Galaktik güncelleştirmelerle burada daha fazla ayar olacak!</p>
+            <button class="auth-btn" onclick="document.getElementById('account-settings-modal').classList.add('hidden')">KAPAT</button>
+        </div>
+    </div>
+
+    <!-- SETTINGS POPOVER MENU -->
+    <div id="settings-popover" class="hidden">
+        <div class="popover-item" id="open-profile-edit">
+            <i data-lucide="user"></i> Profili Düzenle
+        </div>
+        <div class="popover-item" id="open-account-settings">
+            <i data-lucide="shield"></i> Hesap Ayarları
+        </div>
+        <div class="popover-item" id="open-app-settings">
+            <i data-lucide="sliders"></i> Görünüm & Ses
+        </div>
+        <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 6px 0;"></div>
+        <div class="popover-item danger" id="logout-btn-trigger">
+            <i data-lucide="log-out"></i> Oturumu Kapat
         </div>
     </div>
 
@@ -253,6 +297,48 @@
 
     <!-- TOASTS -->
     <div id="toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999;"></div>
+
+    <!-- SERVER SETTINGS MODAL -->
+    <div id="server-settings-modal" class="hidden">
+        <div class="settings-sidebar">
+            <div style="font-size: 14px; font-weight: 800; color: var(--brand-color); margin-bottom: 24px; padding-left: 10px;">GALAXY SETTINGS</div>
+            <div class="settings-nav-item active" data-tab="roles">Roller</div>
+            <div class="settings-nav-item" data-tab="members">Üyeler</div>
+            <div style="margin-top: auto; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px;">
+                <button id="close-server-settings" style="background: var(--bg-side); border: 1px solid var(--border-gold); color: white; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: 800;">KAPAT</button>
+            </div>
+        </div>
+        <div class="settings-content" id="settings-tab-content">
+            <!-- Content dynamicly loaded -->
+            <div id="roles-tab">
+                <h2 style="color: var(--brand-color); margin-bottom: 8px;">Sunucu Rolleri</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 32px; font-size: 14px;">Üyelerinize vermek istediğiniz rolleri burada oluşturun ve yetkilendirin.</p>
+                
+                <div style="display: flex; gap: 16px; margin-bottom: 32px; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05);">
+                    <input type="text" id="new-role-name" placeholder="Rol İsmi (örn: Moderatör)" style="flex: 1; background: transparent; border: none; border-bottom: 2px solid var(--border-gold); color: white; padding: 8px; outline: none;">
+                    <input type="color" id="new-role-color" value="#c5a059" style="width: 40px; height: 40px; border: none; background: transparent; cursor: pointer;">
+                    <button id="add-role-btn" class="auth-btn">ROL EKLE</button>
+                </div>
+
+                <div id="role-list">
+                    <!-- Roles list -->
+                </div>
+                
+                <div id="role-editor" class="hidden" style="margin-top: 32px; padding-top: 32px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <h3 id="editing-role-name" style="margin-bottom: 20px;">Rol Yetkileri</h3>
+                    <div id="permissions-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <label class="perm-checkbox"><input type="checkbox" data-perm="manage_server"> Sunucuyu Yönet</label>
+                        <label class="perm-checkbox"><input type="checkbox" data-perm="manage_roles"> Rolleri Yönet</label>
+                        <label class="perm-checkbox"><input type="checkbox" data-perm="manage_channels"> Kanalları Yönet</label>
+                        <label class="perm-checkbox"><input type="checkbox" data-perm="manage_messages"> Mesajları Yönet</label>
+                        <label class="perm-checkbox"><input type="checkbox" data-perm="kick_members"> Üyeleri At</label>
+                        <label class="perm-checkbox"><input type="checkbox" data-perm="mention_everyone"> Herkese Etiket At</label>
+                    </div>
+                    <button id="save-role-perms-btn" class="auth-btn" style="margin-top: 32px; width: 100%;">YETKİLERİ KAYDET</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="app.js"></script>
     <script>

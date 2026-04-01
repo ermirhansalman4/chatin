@@ -408,8 +408,54 @@ body {
         gap: 12px;
         width: 90%;
     }
-    
-    #voice-grid {
-        grid-template-columns: repeat(2, 1fr);
+}
+
+/* --- SETTINGS POPOVER --- */
+#settings-popover {
+    position: absolute;
+    bottom: 80px;
+    left: 12px;
+    width: 220px;
+    background: rgba(18, 18, 26, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    z-index: 10000;
+}
+
+.popover-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.popover-item i { width: 16px; opacity: 0.7; }
+
+.popover-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+}
+
+.popover-item.danger { color: var(--error-color); }
+.popover-item.danger:hover {
+    background: rgba(255, 71, 87, 0.1);
+}
+
+@media (max-width: 1024px) {
+    #settings-popover {
+        bottom: auto;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 280px;
     }
 }
