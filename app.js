@@ -553,12 +553,17 @@ window.openUserProfile = async (data) => {
     document.getElementById('profile-edit-mode').classList.add('hidden');
 
     // Sunucu bağlamı yoksa rol yönetimini atla
-    if (!currentServerId || !data.uid || !currentUser) return;
+    if (!currentServerId || !data.uid || !currentUser) {
+        console.log("Rol UI Gösterilemedi - Eksik Veri:", { currentServerId, uid: data?.uid, currentUser: currentUser?.uid });
+        return;
+    }
 
     // State'teki ownerUid'i kullan — ek Firestore çağrısı yok
     const isOwner = currentServerOwnerUid === currentUser.uid;
+    console.log("Owner Kontrolü:", { currentServerOwnerUid, currentUser: currentUser.uid, isOwner });
 
-    if (isOwner && data.uid !== currentUser.uid) {
+    // Kendi rolünü de düzenleyebilmesi için sadece isOwner kontrolü yeterli
+    if (isOwner) {
         try {
             const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
             
