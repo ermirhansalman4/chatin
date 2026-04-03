@@ -647,7 +647,7 @@ const toggleDMView = () => {
         dmSidebarTrigger?.classList.add('active');
         document.getElementById('current-server-name').innerText = "Özel Mesajlar";
         document.getElementById('current-channel-name').innerText = "Arkadaş Seç";
-        document.getElementById('messages-container').innerHTML = '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-secondary); opacity:0.6;"><i data-lucide="message-square" style="width:48px; height:48px; margin-bottom:16px;"></i><p>Mesajlaşmak için bir kankanı seç!</p></div>';
+        document.getElementById('channel-list').innerHTML = '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-secondary); opacity:0.6;"><i data-lucide="message-square" style="width:48px; height:48px; margin-bottom:16px;"></i><p>Mesajlaşmak için bir kankanı seç!</p></div>';
         loadDMList();
         lucide.createIcons();
         document.getElementById('voice-channels-area')?.classList.add('hidden');
@@ -661,13 +661,13 @@ const toggleDMView = () => {
             renderChannels(currentServerId);
             renderMembers(currentServerId);
         } else {
-            document.getElementById('channels-container').innerHTML = '<div style="padding:20px; text-align:center; color:gray;">Bir galaksi seç veya arkadaşlarınla konuş!</div>';
+            document.getElementById('channel-list').innerHTML = '<div style="padding:20px; text-align:center; color:gray;">Bir galaksi seç veya arkadaşlarınla konuş!</div>';
         }
     }
 };
 
 const loadDMList = () => {
-    const container = document.getElementById('channels-container');
+    const container = document.getElementById('channel-list');
     if (!container) return;
     
     if (myFriends.length === 0) {
