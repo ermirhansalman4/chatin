@@ -15,7 +15,8 @@ import {
     arrayUnion,
     arrayRemove,
     deleteDoc,
-    setDoc
+    setDoc,
+    collectionGroup
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 import { 
@@ -326,6 +327,7 @@ if (paymentUserId) {
 
 // (State consolidated at top)
 // --- UI GLOBALS ---
+const channelList = document.getElementById('channel-list');
 const messageList = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const chatHeaderName = document.getElementById('current-channel-name');
@@ -341,6 +343,10 @@ const headerInviteCode = document.getElementById('header-invite-code');
 const voiceArea = document.getElementById('voice-area');
 const voiceGrid = document.getElementById('voice-grid');
 const messageInputContainer = document.getElementById('message-input-container');
+
+// BLDRM SES
+const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+notificationSound.volume = 0.5;
 
 // --- CUSTOM DIALOGS SYSTEM ---
 window.customConfirm = (title, msg) => {
@@ -726,10 +732,15 @@ const listenToDMs = (recipientUid) => {
 
     unsubscribeMessages = onSnapshot(q, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
+            const msg = change.doc.data();
             if (change.type === "added") {
-                renderMessage(change.doc.data(), change.doc.id);
+                renderMessage(msg, change.doc.id);
+                // Eer mesaj bizden deilse ve sayfa yklendikten sonra gelmise SES AL
+                if (msg.uid !== auth.currentUser.uid) {
+                    notificationSound.play().catch(e => console.log("Ses hatas (Browser engeli):", e));
+                }
             } else if (change.type === "modified") {
-                updateMessageUI(change.doc.data(), change.doc.id);
+                updateMessageUI(msg, change.doc.id);
             } else if (change.type === "removed") {
                 removeMessageUI(change.doc.id);
             }
@@ -738,6 +749,39 @@ const listenToDMs = (recipientUid) => {
         if (msgList) msgList.scrollTop = msgList.scrollHeight;
     }, (error) => {
         console.error("DM Listener Hata:", error);
+    });
+};
+
+let unsubscribeGlobalDMs = null;
+const initGlobalDMListener = () => {
+    if (unsubscribeGlobalDMs) unsubscribeGlobalDMs();
+    const myUid = auth.currentUser.uid;
+    // TMM mesajlar koleksiyon grubu iin bir indeks gerektirebilir (Firebase konsolunda)
+    const q = query(
+        collectionGroup(db, 'messages'),
+        where('recipientUid', '==', myUid),
+        orderBy('timestamp', 'desc'),
+        limit(1)
+    );
+
+    let isFirstLoad = true;
+    unsubscribeGlobalDMs = onSnapshot(q, (snapshot) => {
+        if (isFirstLoad) {
+            isFirstLoad = false;
+            return;
+        }
+        snapshot.docChanges().forEach(change => {
+            if (change.type === "added") {
+                const msg = change.doc.data();
+                // Eer u an sohbet ettiimiz kii deilse BİLDİRİM VER
+                if (msg.uid !== currentDMRecipientId) {
+                    notificationSound.play().catch(e => {});
+                    showToast(`Yeni Mesaj: ${msg.username}`, "info");
+                }
+            }
+        });
+    }, (error) => {
+        console.error("Global DM Radar Hata:", error);
     });
 };
 
@@ -818,6 +862,7 @@ export const sendDM = async (content, isFile = false) => {
 
     const msgData = {
         uid: auth.currentUser.uid,
+        recipientUid: currentDMRecipientId,
         username: auth.currentUser.displayName || "Kullanıcı",
         timestamp: serverTimestamp(),
         reactions: {}
@@ -1621,6 +1666,7 @@ auth.onAuthStateChanged(async (user) => {
         
         // Kullanıcıyı Firestore'a senkronize et
         await syncUserToFirestore(user);
+        initGlobalDMListener();
         
         // ADMIN KONTROLÜ (SADECE SİZİN İÇİN)
         const ADMIN_UID = 'JU4pSd1VslcS6zJoaImsKjESzhl2';
