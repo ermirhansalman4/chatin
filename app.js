@@ -652,13 +652,13 @@ const toggleDMView = () => {
         loadDMList();
         lucide.createIcons();
         document.getElementById('voice-channels-area')?.classList.add('hidden');
-        document.getElementById('server-members-list-container')?.classList.add('hidden');
+        document.getElementById('member-list-container')?.classList.add('hidden');
     } else {
         dmSidebarTrigger?.classList.remove('active');
         const activeServerNameElem = document.getElementById('active-server-name');
         if (activeServerNameElem) activeServerNameElem.innerText = currentServerName || "Sunucu Seçin";
         document.getElementById('voice-channels-area')?.classList.remove('hidden');
-        document.getElementById('server-members-list-container')?.classList.remove('hidden');
+        document.getElementById('member-list-container')?.classList.remove('hidden');
         
         if (currentServerId) {
             listenToChannels(currentServerId);
@@ -702,7 +702,7 @@ const switchDM = (uid, name) => {
     document.querySelector(`.dm-user-item[data-uid="${uid}"]`)?.classList.add('active');
     
     document.getElementById('current-channel-name').innerText = `@${name}`;
-    document.getElementById('messages-container').innerHTML = '';
+    document.getElementById('chat-messages').innerHTML = '';
     
     listenToDMs(uid);
 };
