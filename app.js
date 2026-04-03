@@ -1088,7 +1088,7 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-// Sunucu Başlığına Tıklama -> Sunucu Ayarlarını Aç (Sahibiyse)
+// Sunucu Başlığına Tıklama -> Sunucu Ayarlarını Aç (Yetkiliyse)
 document.getElementById('server-header-btn').onclick = async () => {
     if (!currentServerId) return;
     const canManage = await checkPermission('manage_server');
@@ -1096,6 +1096,30 @@ document.getElementById('server-header-btn').onclick = async () => {
         document.getElementById('server-settings-modal').classList.remove('hidden');
         loadRoles(); 
         loadRoleChannelsUI('new-role-channels'); // AYARLAR AÇILDIĞINDA KANALLARI DA YÜKLE
+        
+        // Sunucu Verilerini Yükle (Premium & Davet Kodu)
+        const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
+        if (serverSnap.exists()) {
+            const serverData = serverSnap.data();
+            document.getElementById('custom-invite-input').value = serverData.inviteCode || '';
+            
+            // Sahibi Premium mu kontrol et
+            const ownerSnap = await getDoc(doc(db, 'users', serverData.ownerUid));
+            const isPremium = ownerSnap.exists() && ownerSnap.data().isPremium;
+            
+            const statusIndicator = document.getElementById('premium-status-indicator');
+            const themeArea = document.getElementById('theme-selector-area');
+            
+            if (isPremium) {
+                statusIndicator.style.background = 'rgba(255, 215, 0, 0.1)';
+                statusIndicator.innerHTML = '<p style="font-weight: 800; color: gold;">BU SUNUCU PREMIUM AYRICALIKLARINA SAHİP! 💎</p>';
+                themeArea.classList.remove('hidden');
+            } else {
+                statusIndicator.style.background = 'rgba(255, 255, 255, 0.05)';
+                statusIndicator.innerHTML = '<p style="color: var(--text-secondary);">BU SUNUCU STANDART SÜRÜMDE. ÖZEL KOD VE TEMALAR İÇİN PREMIUM GEREKLİ.</p>';
+                themeArea.classList.add('hidden');
+            }
+        }
     } else {
         showToast("Sunucu ayarları için yetkiniz yok.", "error");
     }
@@ -1329,14 +1353,37 @@ document.getElementById('save-custom-invite').onclick = async () => {
     if (!currentServerId) return;
     const newCode = document.getElementById('custom-invite-input').value.trim();
     if (!newCode) return;
-    
-    // Çakışma kontrolü (Basitçe)
-    const q = query(collection(db, 'servers'), where('inviteCode', '==', newCode));
-    const snap = await getDocs(q);
-    if (!snap.empty) return showToast("Bu özel davet kodu başka bir galaksi tarafından kullanılıyor!", "error");
 
-    await updateDoc(doc(db, 'servers', currentServerId), { inviteCode: newCode });
-    showToast(`Bağlantın güncellendi: chatin/invite/${newCode}`, "success");
+    if (newCode.length < 3) return showToast("Özel kod en az 3 karakter olmalı!", "error");
+
+    try {
+        const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
+        if (!serverSnap.exists()) return;
+        
+        const ownerUid = serverSnap.data().ownerUid;
+        const ownerSnap = await getDoc(doc(db, 'users', ownerUid));
+        const isPremium = ownerSnap.exists() && ownerSnap.data().isPremium;
+
+        if (!isPremium) {
+            return showToast("Özel davet kodu sadece Premium sunucular içindir! 💎", "error");
+        }
+
+        // Çakışma kontrolü
+        const q = query(collection(db, 'servers'), where('inviteCode', '==', newCode));
+        const snap = await getDocs(q);
+        
+        // Kendi kodumuzsa sorun yok, başkasınındaysa hata ver
+        const isAlreadyTakenByOthers = snap.docs.some(d => d.id !== currentServerId);
+        if (isAlreadyTakenByOthers) {
+            return showToast("Bu galaktik kod zaten başka bir sunucu tarafından kapılmış! 🛸", "error");
+        }
+
+        await updateDoc(doc(db, 'servers', currentServerId), { inviteCode: newCode });
+        showToast(`Özel bağlantın artık aktif: chatin/invite/${newCode} ✨`, "success");
+    } catch (err) {
+        console.error(err);
+        showToast("Davet kodu güncellenirken hata oluştu!", "error");
+    }
 };
 
 document.getElementById('delete-server-btn-trigger').onclick = () => {
