@@ -53,29 +53,55 @@ let currentVoiceChannelId = null;
 let isDMMode = false;
 let unsubscribeDMs = null;
 
-// --- FRIENDSHIP SYSTEM LOGIC ---
+// --- FRIENDSHIP SYSTEM UI & LOGIC ---
 
-const friendsModal = document.getElementById('friends-modal');
-const userSearchInput = document.getElementById('user-search-input');
-const userSearchResults = document.getElementById('user-search-results');
-const incomingRequestsList = document.getElementById('incoming-requests-list');
-const friendRequestBadge = document.getElementById('friend-request-badge');
-const requestsTabBadge = document.getElementById('requests-tab-badge');
+const initFriendsUI = () => {
+    const friendsModal = document.getElementById('friends-modal');
+    const userSearchInput = document.getElementById('user-search-input');
+    const userSearchResults = document.getElementById('user-search-results');
+    const incomingRequestsList = document.getElementById('incoming-requests-list');
+    const addFriendBtn = document.getElementById('add-friend-btn');
+    const closeFriendsBtn = document.getElementById('close-friends-btn');
+    const searchTabBtn = document.getElementById('search-tab-btn');
+    const requestsTabBtn = document.getElementById('requests-tab-btn');
 
-// Arkadaşlık Modalını Aç
-document.getElementById('add-friend-btn').onclick = () => {
-    friendsModal.classList.remove('hidden');
-    switchFriendTab('search');
+    if (addFriendBtn) {
+        addFriendBtn.onclick = () => {
+            friendsModal?.classList.remove('hidden');
+            switchFriendTab('search');
+        };
+    }
+
+    if (closeFriendsBtn) closeFriendsBtn.onclick = () => friendsModal?.classList.add('hidden');
+
+    if (searchTabBtn) searchTabBtn.onclick = () => switchFriendTab('search');
+    if (requestsTabBtn) requestsTabBtn.onclick = () => switchFriendTab('requests');
+
+    if (userSearchInput) {
+        userSearchInput.oninput = () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(async () => {
+                const queryStr = userSearchInput.value.trim();
+                if (queryStr.length < 3) return;
+
+                const q = query(collection(db, 'users'), where('username', '==', queryStr));
+                const snap = await getDocs(q);
+                renderSearchResults(snap.docs);
+            }, 500);
+        };
+    }
 };
 
-document.getElementById('close-friends-btn').onclick = () => friendsModal.classList.add('hidden');
+// Arkadaşlık Modalını Başlat (DOM Yüklendiğinde)
+window.addEventListener('DOMContentLoaded', initFriendsUI);
 
-// Tab Değiştirme
 const switchFriendTab = (tab) => {
     const searchBtn = document.getElementById('search-tab-btn');
     const requestsBtn = document.getElementById('requests-tab-btn');
     const searchContent = document.getElementById('search-content');
     const requestsContent = document.getElementById('requests-content');
+
+    if (!searchBtn || !requestsBtn || !searchContent || !requestsContent) return;
 
     if (tab === 'search') {
         searchBtn.classList.add('active');
@@ -90,24 +116,12 @@ const switchFriendTab = (tab) => {
     }
 };
 
-document.getElementById('search-tab-btn').onclick = () => switchFriendTab('search');
-document.getElementById('requests-tab-btn').onclick = () => switchFriendTab('requests');
-
-// Kullanıcı Ara
 let searchTimeout = null;
-userSearchInput.oninput = () => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(async () => {
-        const queryStr = userSearchInput.value.trim();
-        if (queryStr.length < 3) return;
-
-        const q = query(collection(db, 'users'), where('username', '==', queryStr));
-        const snap = await getDocs(q);
-        renderSearchResults(snap.docs);
-    }, 500);
-};
 
 const renderSearchResults = (docs) => {
+    const userSearchResults = document.getElementById('user-search-results');
+    if (!userSearchResults) return;
+    
     userSearchResults.innerHTML = '';
     if (docs.length === 0) {
         userSearchResults.innerHTML = '<p style="text-align:center; color:gray; margin-top:20px;">Kullanıcı bulunamadı.</p>';
@@ -116,21 +130,24 @@ const renderSearchResults = (docs) => {
 
     docs.forEach(d => {
         const userData = d.data();
-        if (userData.uid === auth.currentUser.uid) return; // Kendini ekleyemezsin
+        if (userData.uid === auth.currentUser?.uid) return;
 
         const div = document.createElement('div');
         div.className = 'user-row';
-        div.style = 'display:flex; align-items:center; justify-content:space-between; padding:12px; background:rgba(255,255,255,0.03); border-radius:12px;';
+        div.style = 'display:flex; align-items:center; justify-content:space-between; padding:12px; background:rgba(255,255,255,0.03); border-radius:12px; margin-bottom: 8px; border: 1px solid rgba(255,215,0,0.05);';
         div.innerHTML = `
             <div style="display:flex; align-items:center; gap:12px;">
-                <img src="${userData.photoURL}" style="width:32px; height:32px; border-radius:50%;">
-                <span style="font-weight:600;">${userData.username}</span>
+                <img src="${userData.photoURL}" style="width:36px; height:36px; border-radius:50%; border: 1px solid var(--border-gold);">
+                <div style="display:flex; flex-direction:column;">
+                    <span style="font-weight:600; font-size:14px; color:white;">${userData.displayName}</span>
+                    <span style="font-size:11px; color:gray;">@${userData.username}</span>
+                </div>
             </div>
-            <button class="add-friend-action-btn" data-uid="${userData.uid}" style="background:var(--brand-color); color:black; border:none; padding:6px 12px; border-radius:8px; font-weight:800; cursor:pointer;">EKLE</button>
+            <button class="add-friend-action-btn" data-uid="${userData.uid}" style="background:var(--brand-color); color:black; border:none; padding:8px 16px; border-radius:10px; font-weight:900; cursor:pointer; font-size:12px; transition: 0.2s;">İSTEK AT</button>
         `;
         userSearchResults.appendChild(div);
 
-        div.querySelector('.add-friend-action-btn').onclick = () => sendFriendRequest(userData.uid, userData.username);
+        div.querySelector('.add-friend-action-btn').onclick = () => sendFriendRequest(userData.uid, userData.displayName);
     });
 };
 
