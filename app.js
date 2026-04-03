@@ -716,12 +716,11 @@ const listenToDMs = (recipientUid) => {
     
     const myUid = auth.currentUser.uid;
     const participants = [myUid, recipientUid].sort();
-    const dmId = participants.join('_'); // Benzersiz DM IDsi
+    const dmId = participants.join('_');
     
     const q = query(
-        collection(db, 'direct_messages'),
-        where('dmId', '==', dmId),
-        orderBy('createdAt', 'asc'),
+        collection(db, 'direct_messages', dmId, 'messages'),
+        orderBy('timestamp', 'asc'),
         limit(50)
     );
 
@@ -735,12 +734,10 @@ const listenToDMs = (recipientUid) => {
                 removeMessageUI(change.doc.id);
             }
         });
-        messageList.scrollTop = messageList.scrollHeight;
+        const msgList = document.getElementById('chat-messages');
+        if (msgList) msgList.scrollTop = msgList.scrollHeight;
     }, (error) => {
         console.error("DM Listener Hata:", error);
-        if (error.code === 'failed-precondition') {
-            showToast("Firebase Index gerekli! Konsoldaki linke tıklayıp 1-2 dk bekleyin.", "error");
-        }
     });
 };
 
