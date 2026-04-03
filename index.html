@@ -250,11 +250,102 @@
         </div>
     </div>
 
-    <div id="account-settings-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 6000; display: flex; align-items: center; justify-content: center;">
-        <div class="settings-card" style="width: 360px; text-align: center;">
-            <h2 style="color: var(--brand-color); margin-bottom: 20px;">Hesap Ayarları</h2>
-            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 24px;">Gelecek Galaktik güncelleştirmelerle burada daha fazla ayar olacak!</p>
-            <button class="auth-btn" onclick="document.getElementById('account-settings-modal').classList.add('hidden')">KAPAT</button>
+    <!-- USER SETTINGS MODAL (DISCORD STYLE) -->
+    <div id="user-settings-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(15px);">
+        <div class="settings-card" style="width: 850px; height: 600px; padding: 0; display: flex; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; position: relative;">
+            
+            <!-- Sidebar -->
+            <div style="width: 240px; background: rgba(0,0,0,0.3); border-right: 1px solid rgba(255,255,255,0.05); padding: 40px 20px; text-align: left;">
+                <div style="font-size: 10px; color: var(--text-secondary); font-weight: 900; margin-bottom: 15px; letter-spacing: 1px; padding-left: 10px;">KULLANICI AYARLARI</div>
+                <div class="user-settings-nav-item active" data-tab="account"><i data-lucide="user" style="width: 16px;"></i> Hesabım</div>
+                <div class="user-settings-nav-item" data-tab="appearance"><i data-lucide="monitor" style="width: 16px;"></i> Görünüm & Ses</div>
+                <div class="user-settings-nav-item" data-tab="premium-status"><i data-lucide="gem" style="width: 16px;"></i> Premium Durumu</div>
+                <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 20px 0;"></div>
+                <div class="user-settings-nav-item danger" id="direct-logout-btn"><i data-lucide="log-out" style="width: 16px;"></i> Çıkış Yap</div>
+            </div>
+
+            <!-- Content Area -->
+            <div style="flex: 1; padding: 40px 60px; text-align: left; overflow-y: auto; position: relative;">
+                <div id="settings-close-btn" style="position: absolute; top: 20px; right: 20px; cursor: pointer; color: var(--text-secondary);"><i data-lucide="x-circle" style="width: 32px; height: 32px;"></i></div>
+
+                <!-- Account Tab -->
+                <div id="settings-tab-account" class="settings-tab-content">
+                    <h2 style="color: white; margin-bottom: 30px; font-size: 24px;">Hesabım</h2>
+                    <div style="background: var(--bg-side); padding: 25px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.05);">
+                        <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px;">
+                            <img id="settings-pfp-preview" src="" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover;">
+                            <div>
+                                <h3 id="settings-name-display" style="color: white; font-size: 20px; margin: 0;">Username</h3>
+                                <p id="settings-email-display" style="color: var(--text-secondary); font-size: 13px; margin-top: 5px;">email@example.com</p>
+                            </div>
+                            <button class="auth-btn" style="width: auto; margin-left: auto; font-size: 11px; padding: 10px 20px;" onclick="document.getElementById('user-settings-modal').classList.add('hidden'); document.getElementById('open-profile-edit').click();">PROFİLİ DÜZENLE</button>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div style="font-size: 11px; color: var(--text-secondary); font-weight: 800; text-transform: uppercase;">Şifre ve Güvenlik</div>
+                            <button id="reset-password-btn" class="auth-btn" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid rgba(255,255,255,0.1); width: 100%; text-align: left; padding: 15px;">Şifre Değiştirme E-postası Gönder</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Appearance Tab -->
+                <div id="settings-tab-appearance" class="settings-tab-content hidden">
+                    <h2 style="color: white; margin-bottom: 30px; font-size: 24px;">Görünüm & Ses</h2>
+                    
+                    <div style="margin-bottom: 35px;">
+                        <div style="font-size: 11px; color: var(--text-secondary); font-weight: 800; margin-bottom: 15px; text-transform: uppercase;">RENK TEMASI</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                            <div class="theme-card active" data-theme="default">
+                                <div style="height: 40px; background: #05060f; border-radius: 8px 8px 0 0;"></div>
+                                <div style="padding: 10px; font-size: 12px; font-weight: 700;">GALAKTİK DERİNLİK</div>
+                            </div>
+                            <div class="theme-card" data-theme="solar">
+                                <div style="height: 40px; background: #1a1a2e; border-radius: 8px 8px 0 0;"></div>
+                                <div style="padding: 10px; font-size: 12px; font-weight: 700;">SOLAR RÜZGAR</div>
+                            </div>
+                            <div class="theme-card" data-theme="nebula">
+                                <div style="height: 40px; background: #10002b; border-radius: 8px 8px 0 0;"></div>
+                                <div style="padding: 10px; font-size: 12px; font-weight: 700;">NEBULA SİSİ</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 35px;">
+                        <div style="font-size: 11px; color: var(--text-secondary); font-weight: 800; margin-bottom: 15px; text-transform: uppercase;">YAZI BOYUTU (BETA)</div>
+                        <input type="range" id="font-size-slider" min="12" max="20" value="14" style="width: 100%; accent-color: var(--brand-color); cursor: pointer;">
+                        <div style="display: flex; justify-content: space-between; color: var(--text-secondary); font-size: 10px; margin-top: 8px;">
+                            <span>KÜÇÜK</span>
+                            <span>NORMAL</span>
+                            <span>BÜYÜK</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 11px; color: var(--text-secondary); font-weight: 800; margin-bottom: 15px; text-transform: uppercase;">BİLDİRİM SESLERİ</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px;">
+                            <div>
+                                <div style="color: white; font-size: 14px; font-weight: 700;">Mesaj Bildirim Sesi</div>
+                                <div style="color: var(--text-secondary); font-size: 11px;">Yeni mesaj geldiğinde bir bildirim sesi çalar.</div>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="notif-sound-toggle" checked>
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Premium Tab -->
+                <div id="settings-tab-premium-status" class="settings-tab-content hidden">
+                    <h2 style="color: white; margin-bottom: 30px; font-size: 24px;">Premium Durumu</h2>
+                    <div id="settings-premium-box" style="padding: 30px; border-radius: 20px; text-align: center; border: 2px dashed rgba(255,215,0,0.2);">
+                        <i data-lucide="shield-alert" style="width: 60px; height: 60px; color: grey; margin-bottom: 20px; opacity: 0.5;"></i>
+                        <h3 style="color: white; font-size: 20px;">Henüz Premium Değilsiniz</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 25px;">Galaktik bannerlar, özel mesaj efektleri ve daha fazlası için Premium'a geçin.</p>
+                        <button class="auth-btn" style="background: gold; color: black; font-weight: 900;" onclick="document.getElementById('user-settings-modal').classList.add('hidden'); document.getElementById('open-premium-promo-test')?.click();">HEMEN PREMIUM OL</button>
+                    </div>
+                </div>
+
+            </div>
         </div>
     </div>
 
@@ -263,10 +354,10 @@
         <div class="popover-item" id="open-profile-edit">
             <i data-lucide="user"></i> Profili Düzenle
         </div>
-        <div class="popover-item" id="open-account-settings">
+        <div class="popover-item" onclick="openUserSettings('account')">
             <i data-lucide="shield"></i> Hesap Ayarları
         </div>
-        <div class="popover-item" id="open-app-settings">
+        <div class="popover-item" onclick="openUserSettings('appearance')">
             <i data-lucide="sliders"></i> Görünüm & Ses
         </div>
         <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 6px 0;"></div>

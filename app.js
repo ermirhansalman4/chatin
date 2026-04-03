@@ -31,7 +31,10 @@ import {
     uploadBytesResumable, 
     getDownloadURL 
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
-
+import { 
+    onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
+    signOut, updateProfile, sendPasswordResetEmail 
+} from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 // --- STATE MANAGEMENT ---
 let currentServerId = null; 
 let currentChannelId = null; 
@@ -1659,3 +1662,137 @@ document.getElementById('request-premium-welcome-btn').onclick = async () => {
 document.getElementById('close-premium-welcome-btn').onclick = () => {
     document.getElementById('premium-welcome-modal').classList.add('hidden');
 };
+
+// --- KULLANICI AYARLARI MANTIĞI ---
+window.openUserSettings = (tab = 'account') => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    document.getElementById('user-settings-modal').classList.remove('hidden');
+    
+    // Verileri yükle
+    document.getElementById('settings-pfp-preview').src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'Üye'}`;
+    document.getElementById('settings-name-display').innerText = user.displayName || 'İsimsiz Üye';
+    document.getElementById('settings-email-display').innerText = user.email;
+
+    // Premium durumu kontrol
+    getDoc(doc(db, 'users', user.uid)).then(docSnap => {
+        const isPremium = docSnap.exists() && docSnap.data().isPremium;
+        const premBox = document.getElementById('settings-premium-box');
+        if (isPremium) {
+            premBox.style.borderColor = 'gold';
+            premBox.style.background = 'rgba(255,215,0,0.05)';
+            premBox.innerHTML = `
+                <i data-lucide="shield-check" style="width: 60px; height: 60px; color: gold; margin-bottom: 20px;"></i>
+                <h3 style="color: gold; font-size: 20px;">AKTİF PREMIUM ÜYE</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">Galaktik Chatin ayrıcalıklarının tadını çıkarıyorsun! 🚀</p>
+            `;
+        } else {
+             premBox.innerHTML = `
+                <i data-lucide="shield-alert" style="width: 60px; height: 60px; color: grey; margin-bottom: 20px; opacity: 0.5;"></i>
+                <h3 style="color: white; font-size: 20px;">Henüz Premium Değilsiniz</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 25px;">Galaktik bannerlar, özel mesaj efektleri ve daha fazlası için Premium'a geçin.</p>
+                <button class="auth-btn" style="background: gold; color: black; font-weight: 900;" onclick="document.getElementById('user-settings-modal').classList.add('hidden'); document.getElementById('open-premium-promo-test')?.click();">HEMEN PREMIUM OL</button>
+            `;
+        }
+        lucide.createIcons();
+    });
+
+    switchSettingsTab(tab);
+};
+
+const switchSettingsTab = (tabId) => {
+    // Nav itemları güncelle
+    document.querySelectorAll('.user-settings-nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.tab === tabId);
+    });
+    // İçerikleri güncelle
+    document.querySelectorAll('.settings-tab-content').forEach(content => {
+        content.classList.toggle('hidden', content.id !== `settings-tab-${tabId}`);
+    });
+};
+
+// Sekme Tıklamaları
+document.querySelectorAll('.user-settings-nav-item[data-tab]').forEach(item => {
+    item.onclick = () => switchSettingsTab(item.dataset.tab);
+});
+
+// Kapatma
+document.getElementById('settings-close-btn').onclick = () => {
+    document.getElementById('user-settings-modal').classList.add('hidden');
+};
+
+// Şifre Sıfırlama
+document.getElementById('reset-password-btn').onclick = async () => {
+    const user = auth.currentUser;
+    if (user && user.email) {
+        try {
+            await sendPasswordResetEmail(auth, user.email);
+            showToast("Şifre sıfırlama bağlantısı e-postana gönderildi! 📧", "success");
+        } catch (err) {
+            showToast("E-posta gönderilemedi: " + err.message, "error");
+        }
+    }
+};
+
+// TEMA MANTIĞI
+const themes_config = {
+    default: { brand: '#c5a059', bg: '#05060f', side: 'rgba(10, 11, 24, 0.95)' },
+    solar: { brand: '#e94560', bg: '#1a1a2e', side: '#16213e' },
+    nebula: { brand: '#a000ff', bg: '#10002b', side: '#240046' }
+};
+
+document.querySelectorAll('.theme-card').forEach(card => {
+    card.onclick = () => {
+        const themeK = card.dataset.theme;
+        applyTheme(themeK);
+        localStorage.setItem('chatin-theme', themeK);
+        // Aktif kartı güncelle
+        document.querySelectorAll('.theme-card').forEach(c => c.classList.toggle('active', c.dataset.theme === themeK));
+    };
+});
+
+const applyTheme = (themeKey) => {
+    const t = themes_config[themeKey] || themes_config.default;
+    document.documentElement.style.setProperty('--brand-color', t.brand);
+    document.documentElement.style.setProperty('--bg-deep', t.bg);
+    document.documentElement.style.setProperty('--bg-side', t.side);
+};
+
+// YAZI BOYUTU
+document.getElementById('font-size-slider').oninput = (e) => {
+    const val = e.target.value;
+    document.documentElement.style.setProperty('--chat-font-size', val + 'px');
+    localStorage.setItem('chatin-font-size', val);
+};
+
+// BİLDİRİM SESİ
+document.getElementById('notif-sound-toggle').onchange = (e) => {
+    localStorage.setItem('chatin-sound-enabled', e.target.checked);
+};
+
+// ÇIKIŞ
+document.getElementById('direct-logout-btn').onclick = async () => {
+    if (confirm("Galaksiden ayrılmak istediğine emin misin? 🌠")) {
+        await signOut(auth);
+        location.reload();
+    }
+};
+
+// SAYFA YÜKLENDİĞİNDE AYARLARI UYGULA
+const initSettings = () => {
+    const savedTheme = localStorage.getItem('chatin-theme') || 'default';
+    const savedFont = localStorage.getItem('chatin-font-size') || '14';
+    const soundEnabled = localStorage.getItem('chatin-sound-enabled') !== 'false';
+
+    applyTheme(savedTheme);
+    document.documentElement.style.setProperty('--chat-font-size', savedFont + 'px');
+    document.getElementById('font-size-slider').value = savedFont;
+    document.getElementById('notif-sound-toggle').checked = soundEnabled;
+
+    // Aktif tema kartını işaretle
+    document.querySelectorAll('.theme-card').forEach(c => c.classList.toggle('active', c.dataset.theme === savedTheme));
+};
+
+// Init settings after small delay or directly
+setTimeout(initSettings, 500);
