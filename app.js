@@ -709,7 +709,8 @@ const switchDM = (uid, name) => {
 
 const listenToDMs = (recipientUid) => {
     if (unsubscribeMessages) unsubscribeMessages();
-    messageList.innerHTML = '';
+    const container = document.getElementById('chat-messages');
+    if (container) container.innerHTML = '';
     
     const myUid = auth.currentUser.uid;
     const participants = [myUid, recipientUid].sort();
@@ -733,6 +734,11 @@ const listenToDMs = (recipientUid) => {
             }
         });
         messageList.scrollTop = messageList.scrollHeight;
+    }, (error) => {
+        console.error("DM Listener Hata:", error);
+        if (error.code === 'failed-precondition') {
+            showToast("Firebase Index gerekli! Konsoldaki linke tıklayıp 1-2 dk bekleyin.", "error");
+        }
     });
 };
 
