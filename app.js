@@ -35,6 +35,23 @@ import {
 // --- STATE MANAGEMENT ---
 let currentServerId = null; 
 let currentChannelId = null; 
+let currentChannelType = 'text';
+
+// Sayfa yüklendiğinde Davet Kodunu Yakala
+const inviteFromUrl = window.location.pathname.split('/invite/')[1];
+if (inviteFromUrl) {
+    sessionStorage.setItem('pendingInvite', inviteFromUrl);
+    window.history.replaceState({}, document.title, "/");
+}
+
+// Ödeme Başarısı Kontrolü (Simülasyon Sonu)
+const urlParams = new URLSearchParams(window.location.search);
+const paymentUserId = urlParams.get('userId');
+if (paymentUserId) {
+    sessionStorage.setItem('paymentConfirmed', 'true');
+    window.history.replaceState({}, document.title, "/");
+}
+
 let currentServerOwnerUid = null;
 let unsubscribeMessages = null;
 let unsubscribeServers = null;
@@ -57,6 +74,49 @@ const headerInviteCode = document.getElementById('header-invite-code');
 const voiceArea = document.getElementById('voice-area');
 const voiceGrid = document.getElementById('voice-grid');
 const messageInputContainer = document.getElementById('message-input-container');
+
+// --- CUSTOM DIALOGS SYSTEM ---
+window.customConfirm = (title, msg) => {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('custom-confirm-modal');
+        document.getElementById('confirm-title').innerText = title;
+        document.getElementById('confirm-msg').innerText = msg;
+        modal.classList.remove('hidden');
+        lucide.createIcons(); // Galaktik ikonları yükle
+        
+        const cleanup = (res) => {
+            modal.classList.add('hidden');
+            document.getElementById('confirm-yes-btn').onclick = null;
+            document.getElementById('confirm-no-btn').onclick = null;
+            resolve(res);
+        };
+        
+        document.getElementById('confirm-yes-btn').onclick = () => cleanup(true);
+        document.getElementById('confirm-no-btn').onclick = () => cleanup(false);
+    });
+};
+
+window.customPrompt = (title, defaultVal = '') => {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('custom-prompt-modal');
+        const input = document.getElementById('prompt-input');
+        document.getElementById('prompt-title').innerText = title;
+        input.value = defaultVal;
+        modal.classList.remove('hidden');
+        input.focus();
+        lucide.createIcons(); // Galaktik ikonları yükle
+        
+        const cleanup = (res) => {
+            modal.classList.add('hidden');
+            document.getElementById('prompt-ok-btn').onclick = null;
+            document.getElementById('prompt-cancel-btn').onclick = null;
+            resolve(res);
+        };
+        
+        document.getElementById('prompt-ok-btn').onclick = () => cleanup(input.value);
+        document.getElementById('prompt-cancel-btn').onclick = () => cleanup(null);
+    });
+};
 
 // --- MESSAGE FUNCTIONS ---
 
@@ -101,26 +161,34 @@ export const sendMessage = async (text, file = null) => {
 
     try {
         const user = auth.currentUser;
-        let fileURL = null;
+        if (!user) return;
 
+        let fileURL = null;
         if (file) {
             fileURL = await uploadFile(file);
         }
 
+        // Kullanıcı efektini al
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.exists() ? userDoc.data() : {};
+
         await addDoc(collection(db, 'messages'), {
             channelId: currentChannelId,
-            userId: user.uid,
-            username: user.displayName,
+            uid: user.uid,
+            username: user.displayName || user.username || 'Anonim',
             userPhoto: user.photoURL,
-            text: text,
+            text: text || '',
             fileURL: fileURL,
-            type: file ? 'image' : 'text', // Basitçe image/text ayırıyoruz
+            messageEffect: userData.messageEffect || 'none',
             createdAt: serverTimestamp()
         });
 
-        chatInput.value = ''; // Inputu temizle
+        if (document.getElementById('chat-input')) {
+            document.getElementById('chat-input').value = '';
+        }
     } catch (error) {
         console.error("Message send error:", error);
+        showToast("Mesaj gönderilemedi: " + error.message, "error");
     }
 };
 
@@ -153,7 +221,7 @@ const renderMessage = (data, id) => {
                     </span>
                     <span style="font-size: 12px; color: var(--text-secondary);">${time}</span>
                 </div>
-                <p style="color: #dcddde; margin-top: 2px;">${data.text}</p>
+                <p class="${data.messageEffect ? 'effect-' + data.messageEffect : ''}" data-text="${data.text}" style="color: #dcddde; margin-top: 2px;">${data.text}</p>
                 ${data.fileURL ? `<img src="${data.fileURL}" style="max-width: 300px; border-radius: 8px; margin-top: 8px; cursor: pointer;">` : ''}
             </div>
         </div>
@@ -175,17 +243,28 @@ chatInput.addEventListener('keypress', (e) => {
     }
 });
 
-// --- SERVER & CHANNEL FUNCTIONS ---
-
 export const createServer = async (serverName) => {
     const user = auth.currentUser;
+    
+    // PREMIUM KONTROLÜ (Limit: 5)
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    const isPremium = userDoc.exists() && userDoc.data().isPremium;
+    
+    const q = query(collection(db, 'servers'), where('ownerUid', '==', user.uid));
+    const serverCount = (await getDocs(q)).size;
+    
+    if (serverCount >= 5 && !isPremium) {
+        await customConfirm("Limit Aşıldı", "Maksimum 5 sunucu sınırına ulaştınız. Daha fazla sunucu oluşturmak için Chatin Premium'a geçmelisiniz.");
+        return null;
+    }
+
     const serverRef = doc(collection(db, 'servers'));
     await setDoc(serverRef, {
         name: serverName,
         inviteCode: serverRef.id.substring(0, 6).toUpperCase(),
         ownerUid: user.uid,
         createdAt: Date.now(),
-        members: [user.uid] // Eski mantıkla uyum için
+        members: [user.uid]
     });
 
     // SUNUCU ÜYE LİSTESİNE KENDİNİ EKLE
@@ -193,7 +272,8 @@ export const createServer = async (serverName) => {
         uid: user.uid,
         username: user.displayName,
         photoURL: user.photoURL,
-        joinedAt: Date.now()
+        joinedAt: Date.now(),
+        roles: []
     });
 
     // Default channel
@@ -207,14 +287,17 @@ export const createServer = async (serverName) => {
     return serverRef.id;
 };
 
-export const joinServer = async (inviteCode) => {
+export const joinServer = async (code) => {
     const user = auth.currentUser;
-    const q = query(collection(db, 'servers'), where('inviteCode', '==', inviteCode));
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) throw new Error("Geçersiz davet kodu!");
-
-    const serverId = querySnapshot.docs[0].id;
+    await customConfirm("Seni Bekliyorlar!", `Bu galaksinin davetini kabul edip içeri giriyoruz... (Kod: ${code})`);
+    
+    // Sunucuyu bul
+    const q = query(collection(db, 'servers'), where('inviteCode', '==', code));
+    const snap = await getDocs(q);
+    if (snap.empty) throw new Error("Üzgünüz, bu galaksi haritadan silinmiş veya davet kodu geçersiz.");
+    
+    const serverDoc = snap.docs[0];
+    const serverId = serverDoc.id;
     
     // Sunucu ana dökümanına üye olarak ekle
     await updateDoc(doc(db, 'servers', serverId), {
@@ -230,6 +313,20 @@ export const joinServer = async (inviteCode) => {
     });
     
     return serverId;
+};
+
+export const deleteServer = async (serverId) => {
+    if (!serverId) return;
+    const confirmed = await customConfirm("SUNUCUYU YOK ET", "Bu sunucuyu ve içindeki tüm verileri (mesajlar, kanallar, roller) kalıcı olarak silmek istediğinize emin misiniz? BU İŞLEM GERİ ALINAMAZ!");
+    if (!confirmed) return;
+
+    try {
+        await deleteDoc(doc(db, 'servers', serverId));
+        showToast("Sunucu başarıyla imha edildi.", "info");
+        window.location.reload(); // Kolay yoldan state temizliği
+    } catch(err) {
+        showToast("Silme hatası: " + err.message, "error");
+    }
 };
 
 export const listenToServers = () => {
@@ -281,8 +378,21 @@ export const switchServer = async (serverId, serverData) => {
     });
 
     // Show Invite Box
-    inviteBox.classList.remove('hidden');
-    currentInviteCode.innerText = serverData.inviteCode;
+    document.getElementById('invite-box').classList.remove('hidden');
+    document.getElementById('current-invite-code').innerText = `#${serverId.slice(0, 7)}`;
+
+    // --- PREMİUM PROMOSYON TETİKLEYİCİ ---
+    const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+    const isPremium = userSnap.exists() && userSnap.data().isPremium;
+    const hasSeenPromo = sessionStorage.getItem('hasSeenPremiumPromo');
+
+    if (!isPremium && !hasSeenPromo) {
+        setTimeout(() => {
+            document.getElementById('premium-welcome-modal').classList.remove('hidden');
+            sessionStorage.setItem('hasSeenPremiumPromo', 'true');
+            lucide.createIcons();
+        }, 2000); // 2 saniye sonra şık bir giriş yapsın
+    }
 
     listenToChannels(serverId);
     listenToMembers(serverId, serverData.ownerUid);
@@ -322,16 +432,17 @@ export const checkPermission = async (perm) => {
     return false;
 };
 
-export const createRole = async (name, color = '#c5a059') => {
+export const createRole = async (name, color = '#c5a059', permissions = [], accessibleChannels = []) => {
     if (!currentServerId) return;
     const rolesRef = collection(db, 'servers', currentServerId, 'roles');
     await addDoc(rolesRef, {
         name,
         color,
-        permissions: [],
+        permissions,
+        accessibleChannels,
         createdAt: serverTimestamp()
     });
-    showToast("Rol oluşturuldu!", "success");
+    showToast("Rol ve yetkiler başarıyla oluşturuldu!", "success");
     loadRoles();
 };
 
@@ -344,7 +455,8 @@ export const updateRolePermissions = async (roleId, permissions) => {
 
 export const deleteRole = async (roleId) => {
     if (!currentServerId) return;
-    if (!confirm("Bu rolü silmek istediğinize emin misiniz?")) return;
+    const confirmed = await customConfirm("Rolü Sil", "Bu rolü silmek istediğinize emin misiniz? Bu işlem geri alınamaz.");
+    if (!confirmed) return;
     await deleteDoc(doc(db, 'servers', currentServerId, 'roles', roleId));
     showToast("Rol silindi.", "info");
     loadRoles();
@@ -360,52 +472,161 @@ const loadRoles = async () => {
     snap.forEach(docSnap => {
         const role = docSnap.data();
         const html = `
-            <div class="role-item" data-id="${docSnap.id}">
+            <div class="role-item" data-id="${docSnap.id}" style="border: 1px solid ${role.color}44; display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <div style="width: 12px; height: 12px; border-radius: 50%; background: ${role.color};"></div>
                     <span style="font-weight: 600;">${role.name}</span>
                 </div>
-                <div style="display: flex; gap: 12px;">
-                    <i data-lucide="shield" class="edit-role-perms" style="width: 16px; cursor: pointer; color: var(--brand-color);"></i>
-                    <i data-lucide="trash-2" class="delete-role-btn" style="width: 16px; cursor: pointer; color: var(--error-color);"></i>
+                <div style="display: flex; gap: 16px;">
+                    <div class="edit-role-perms" title="Yetkileri Düzenle" style="cursor: pointer; color: var(--brand-color);"><i data-lucide="shield" style="width: 18px;"></i></div>
+                    <div class="delete-role-btn" title="Rolü Sil" style="cursor: pointer; color: var(--error-color);"><i data-lucide="trash-2" style="width: 18px;"></i></div>
                 </div>
             </div>
         `;
         roleList.insertAdjacentHTML('beforeend', html);
         
         const item = roleList.lastElementChild;
-        item.querySelector('.edit-role-perms').onclick = () => openRoleEditor(docSnap.id, role);
-        item.querySelector('.delete-role-btn').onclick = () => deleteRole(docSnap.id);
+        item.querySelector('.edit-role-perms').onclick = (e) => { e.stopPropagation(); openRoleEditor(docSnap.id, role); };
+        item.querySelector('.delete-role-btn').onclick = (e) => { e.stopPropagation(); deleteRole(docSnap.id); };
     });
     lucide.createIcons();
 };
 
-let editingRoleId = null;
-const openRoleEditor = (roleId, roleData) => {
-    editingRoleId = roleId;
-    document.getElementById('editing-role-name').innerText = `${roleData.name} Rolü Yetkileri`;
-    document.getElementById('role-editor').classList.remove('hidden');
-    
-    // Checkboxes sync
-    const checkboxes = document.querySelectorAll('#permissions-grid input');
-    checkboxes.forEach(cb => {
-        cb.checked = roleData.permissions.includes(cb.dataset.perm);
+const loadMembersInSettings = async () => {
+    if (!currentServerId) return;
+    const membersRef = collection(db, 'servers', currentServerId, 'members');
+    const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
+    const rolesList = [];
+    rolesSnap.forEach(r => rolesList.push({id: r.id, ...r.data()}));
+
+    const snap = await getDocs(membersRef);
+    const list = document.getElementById('settings-members-list');
+    list.innerHTML = '';
+
+    snap.forEach(docSnap => {
+        const data = docSnap.data();
+        const isSelf = data.uid === auth.currentUser.uid;
+        
+        let rolesHtml = '<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;">';
+        rolesList.forEach(role => {
+            const hasRole = (data.roles || []).includes(role.id);
+            rolesHtml += `<div class="mini-role-pill" data-uid="${data.uid}" data-rid="${role.id}" style="padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; border: 1px solid ${role.color}; background: ${hasRole ? role.color : 'transparent'}; color: ${hasRole ? 'white' : role.color};">${role.name}</div>`;
+        });
+        rolesHtml += '</div>';
+
+        const html = `
+            <div style="background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" style="width: 36px; height: 36px; border-radius: 50%;">
+                    <div style="flex: 1;">
+                        <span style="font-weight: 700; font-size: 14px;">${data.username}</span>
+                        <div style="font-size: 10px; color: var(--text-secondary);">Üye ID: ${data.uid.substring(0,8)}...</div>
+                    </div>
+                    <button class="kick-btn-settings" data-uid="${data.uid}" style="background: transparent; border: 1px solid var(--error-color); color: var(--error-color); padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 800; ${isSelf ? 'display:none' : ''}">SUNUCUDAN AT</button>
+                </div>
+                ${rolesHtml}
+            </div>
+        `;
+        list.insertAdjacentHTML('beforeend', html);
     });
+
+    // Rol değişimi dinleyicileri
+    list.querySelectorAll('.mini-role-pill').forEach(pill => {
+        pill.onclick = async () => {
+            const uid = pill.dataset.uid;
+            const rid = pill.dataset.rid;
+            const memberSnap = await getDoc(doc(db, 'servers', currentServerId, 'members', uid));
+            if (!memberSnap.exists()) return;
+            
+            let userRoles = memberSnap.data().roles || [];
+            if (userRoles.includes(rid)) {
+                userRoles = userRoles.filter(id => id !== rid);
+            } else {
+                userRoles.push(rid);
+            }
+            await assignRoleToMember(uid, userRoles);
+            loadMembersInSettings(); // UI Yenile
+        };
+    });
+};
+
+const loadRoleChannelsUI = async (containerId, selectedChannels = []) => {
+    const container = document.getElementById(containerId);
+    if (!container || !currentServerId) return;
+    
+    const snap = await getDocs(query(collection(db, 'channels'), where('serverId', '==', currentServerId)));
+    container.innerHTML = '';
+    
+    snap.forEach(docSnap => {
+        const chan = docSnap.data();
+        const isChecked = selectedChannels.includes(docSnap.id);
+        const item = document.createElement('label');
+        item.className = 'perm-checkbox';
+        item.style.fontSize = '12px';
+        item.style.padding = '8px';
+        item.innerHTML = `<input type="checkbox" value="${docSnap.id}" ${isChecked ? 'checked' : ''}> # ${chan.name}`;
+        container.appendChild(item);
+    });
+};
+
+const openRoleEditor = (roleId, roleData) => {
+    const editor = document.getElementById('role-editor');
+    editor.classList.remove('hidden');
+    document.getElementById('editing-role-name').innerText = `"${roleData.name}" Yetkileri & Erişimi`;
+    
+    // Check checkboxes based on current permissions
+    const perms = roleData.permissions || [];
+    editor.querySelectorAll('input[data-perm]').forEach(cb => {
+        cb.checked = perms.includes(cb.dataset.perm);
+    });
+
+    // Load channel access
+    loadRoleChannelsUI('edit-role-channels', roleData.accessibleChannels || []);
+    
+    window.editingRoleId = roleId;
+    window.editingRoleData = roleData;
+    editor.scrollIntoView({ behavior: 'smooth' });
 };
 
 const listenToChannels = (serverId) => {
     if (unsubscribeChannels) unsubscribeChannels();
     const q = query(collection(db, 'channels'), where('serverId', '==', serverId));
     
-    unsubscribeChannels = onSnapshot(q, (snapshot) => {
+    unsubscribeChannels = onSnapshot(q, async (snapshot) => {
+        // --- BU KISIM ÖNEMLİ: KULLANICI ROLÜNE GÖRE FİLTRELEME ---
+        const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
+        const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === auth.currentUser.uid;
+        
+        let allowedChannelIds = [];
+        if (!isOwner) {
+            const memberRef = doc(db, 'servers', currentServerId, 'members', auth.currentUser.uid);
+            const memberSnap = await getDoc(memberRef);
+            if (memberSnap.exists()) {
+                const roleIds = memberSnap.data().roles || [];
+                for (const rid of roleIds) {
+                    const roleSnap = await getDoc(doc(db, 'servers', currentServerId, 'roles', rid));
+                    if (roleSnap.exists()) {
+                        const accessible = roleSnap.data().accessibleChannels || [];
+                        allowedChannelIds = [...new Set([...allowedChannelIds, ...accessible])];
+                    }
+                }
+            }
+        }
+
         textChannelsContainer.innerHTML = '';
         voiceChannelsContainer.innerHTML = '';
         snapshot.docs.forEach((doc, index) => {
             const data = doc.data();
-            renderChannelItem(data, doc.id);
-            // Auto switch to first text channel if not set
-            if (index === 0 && !currentChannelId && data.type === 'text') {
-                switchChannel(doc.id, data.name, data.type);
+            // Eğer sahip değilsek ve bu kanal bizim kanal listemizde yoksa GÖSTERME (Erişim kısıtlıysa)
+            // Not: Eğer sunucuda hiç rol yoksa veya rolün içine kanal eklenmemişse görünürlük durumunu sunucu sahibine bırakıyoruz
+            const canSee = isOwner || allowedChannelIds.includes(doc.id);
+            
+            if (canSee) {
+                renderChannelItem(data, doc.id);
+                // Auto switch to first text channel if not set
+                if (index === 0 && !currentChannelId && data.type === 'text') {
+                    switchChannel(doc.id, data.name, data.type);
+                }
             }
         });
     });
@@ -423,13 +644,22 @@ export const createChannel = async (name, type = 'text') => {
 
 export const deleteChannel = async (channelId) => {
     if (!(await checkPermission('manage_channels'))) return showToast("Bu işlem için yetkiniz yok!", "error");
-    if (!confirm("Bu kanalı silmek istediğinizden emin misiniz?")) return;
+    const confirmed = await customConfirm("Kanalı Sil", "Bu kanalı silmek istediğinizden emin misiniz?");
+    if (!confirmed) return;
     await deleteDoc(doc(db, 'channels', channelId));
+};
+
+export const updateChannelName = async (channelId, newName) => {
+    if (!(await checkPermission('manage_channels'))) return showToast("Bu işlem için yetkiniz yok!", "error");
+    if (!newName) return;
+    await updateDoc(doc(db, 'channels', channelId), { name: newName });
 };
 export const kickMember = async (uid) => {
     if (!currentServerId) return;
     if (!(await checkPermission('kick_members'))) return showToast("Bu işlem için yetkiniz yok!", "error");
-    if (!confirm("Bu üyeyi sunucudan atmak istediğinizden emin misiniz?")) return;
+    
+    const confirmed = await customConfirm("Üyeyi At", "Bu üyeyi sunucudan atmak istediğinizden emin misiniz?");
+    if (!confirmed) return;
     
     // 1. Sunucu ana listesinden sil
     await updateDoc(doc(db, 'servers', currentServerId), {
@@ -444,7 +674,7 @@ export const kickMember = async (uid) => {
 
 export const renameChannel = async (channelId, oldName) => {
     if (!(await checkPermission('manage_channels'))) return showToast("Bu işlem için yetkiniz yok!", "error");
-    const newName = prompt("Yeni kanal adı:", oldName);
+    const newName = await customPrompt("Kanalı Yeniden Adlandır", oldName);
     if (newName && newName !== oldName) {
         await updateDoc(doc(db, 'channels', channelId), { name: newName });
     }
@@ -480,6 +710,12 @@ export const switchChannel = async (channelId, channelName, type = 'text') => {
         messageList.classList.remove('hidden');
         messageInputContainer.classList.remove('hidden');
         voiceArea.classList.add('hidden');
+        
+        // Premium Giriş Bildirimi
+        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (userDoc.exists() && userDoc.data().isPremium) {
+            showToast(`✨ ${auth.currentUser.displayName || 'Galaktik Yolcu'} Galaksiye Giriş Yaptı!`, "success");
+        }
     }
 };
 
@@ -536,12 +772,20 @@ window.openUserProfile = async (data) => {
     // Önce modalı aç — async işlemler sonradan dolduracak
     if (currentUser && currentUser.uid === data.uid) {
         editBtn.classList.remove('hidden');
-        // Edit inputlarını da dolduralım
         document.getElementById('edit-profile-pfp-input').value = data.photoURL || '';
+        document.getElementById('edit-profile-banner-input').value = data.bannerURL || '';
+        document.getElementById('edit-profile-effect-input').value = data.messageEffect || 'none';
         document.getElementById('edit-profile-name-input').value = data.username || '';
         document.getElementById('edit-profile-bio-input').value = data.bio || '';
     } else {
         editBtn.classList.add('hidden');
+    }
+
+    const banner = document.getElementById('profile-modal-banner');
+    if (data.bannerURL) {
+        banner.style.backgroundImage = `url(${data.bannerURL})`;
+    } else {
+        banner.style.backgroundImage = 'none';
     }
 
     // Eski rol panelini temizle
@@ -551,6 +795,28 @@ window.openUserProfile = async (data) => {
     document.getElementById('profile-modal-overlay').classList.remove('hidden');
     document.getElementById('profile-view-mode').classList.remove('hidden');
     document.getElementById('profile-edit-mode').classList.add('hidden');
+
+    // Premium & Rozet Kontrolü
+    const userDoc = await getDoc(doc(db, 'users', data.uid));
+    if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const isPremium = userData.isPremium;
+        
+        // Premium Rozeti (🚀)
+        const badgeSpot = document.getElementById('premium-badge-spot');
+        badgeSpot.innerHTML = isPremium ? '<i data-lucide="zap" style="color: gold; width: 22px; filter: drop-shadow(0 0 5px gold);"></i>' : '';
+
+        // Diğer Rozetler
+        const badgesList = document.getElementById('profile-badges');
+        badgesList.innerHTML = '';
+        if (isPremium) badgesList.innerHTML += '<div class="role-pill" style="border-color: gold; color: gold; font-size: 9px; padding: 2px 6px;">PREMIUM</div>';
+        if (userData.isOwner || data.uid === 'SİZİN_ADMIN_UID_NİZ') {
+            badgesList.innerHTML += '<div class="role-pill" style="border-color: #8a2be2; color: #8a2be2; font-size: 9px; padding: 2px 6px;">KURUCU</div>';
+        }
+        badgesList.innerHTML += '<div class="role-pill" style="border-color: #00ced1; color: #00ced1; font-size: 9px; padding: 2px 6px;">GÖNÜLLÜ TESTER</div>';
+        
+        lucide.createIcons();
+    }
 
     // Sunucu bağlamı yoksa rol yönetimini atla
     if (!currentServerId || !data.uid || !currentUser) {
@@ -589,7 +855,8 @@ window.openUserProfile = async (data) => {
             const viewMode = document.getElementById('profile-view-mode');
             const editModeBtn = document.getElementById('open-edit-mode-btn');
             if (viewMode && editModeBtn) {
-                viewMode.insertBefore(rolePanel, editModeBtn);
+                // NotFoundError çözüm: editModeBtn'in parentNode'unu kullan
+                editModeBtn.parentNode.insertBefore(rolePanel, editModeBtn);
             }
 
             rolePanel.querySelectorAll('.role-pill').forEach(pill => {
@@ -687,12 +954,39 @@ const renderChannelItem = async (data, id) => {
     });
 
     if (isOwner) {
-        item.querySelector('.edit-chan-btn').addEventListener('click', () => renameChannel(id, data.name));
-        item.querySelector('.delete-chan-btn').addEventListener('click', () => deleteChannel(id));
+        item.querySelector('.edit-chan-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.editingChannelId = id;
+            document.getElementById('edit-channel-name-input').value = data.name;
+            document.getElementById('edit-channel-modal').classList.remove('hidden');
+        });
+        item.querySelector('.delete-chan-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteChannel(id);
+        });
     }
 
     lucide.createIcons();
 };
+
+// --- KANAL DÜZENLEME MODAL İŞLEMLERİ ---
+document.getElementById('save-channel-name-btn').onclick = async () => {
+    const newName = document.getElementById('edit-channel-name-input').value.trim();
+    if (!newName || !window.editingChannelId) return;
+
+    try {
+        await updateChannelName(window.editingChannelId, newName);
+        showToast("Kanal ismi başarıyla güncellendi!", "success");
+        document.getElementById('edit-channel-modal').classList.add('hidden');
+    } catch (err) {
+        showToast("Hata: " + err.message, "error");
+    }
+};
+
+document.getElementById('cancel-edit-channel-btn').onclick = () => {
+    document.getElementById('edit-channel-modal').classList.add('hidden');
+};
+
 const renderMemberItem = async (data, serverId, ownerUid) => {
     const isOwner = ownerUid === data.uid;
     const canKick = await checkPermission('kick_members');
@@ -730,43 +1024,44 @@ const renderMemberItem = async (data, serverId, ownerUid) => {
     });
 };
 
-// Auth başarısından sonra kapıları aç (UI Sync)
-window.addEventListener('auth-success', (e) => {
-    const authOverlay = document.getElementById('auth-overlay');
-    const appContainer = document.getElementById('app-container');
-    const nameEl = document.getElementById('current-user-name');
-    const pfpEl = document.getElementById('current-user-avatar');
-
-    if (authOverlay) authOverlay.classList.add('hidden');
-    if (appContainer) appContainer.classList.remove('hidden');
-
-    const user = e.detail;
-    if (nameEl) nameEl.innerText = user.displayName || user.username || "Kullanıcı";
-    if (pfpEl) pfpEl.src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=random`;
-
-    listenToServers();
-});
-
-// Oturum kapatıldığında giriş ekranına dön
-window.addEventListener('auth-logout', () => {
-    document.getElementById('auth-overlay').classList.remove('hidden');
-    document.getElementById('app-container').classList.add('hidden');
-});
-
-// Ses kanalından ayrılma butonu tetiklendiğinde
-window.addEventListener('leave-voice', async () => {
-    if (currentVoiceChannelId) {
-        await leaveVoiceChannel(currentVoiceChannelId);
+// Auth State Listener
+auth.onAuthStateChanged(async (user) => {
+    if (user) {
+        console.log("Logged In:", user.displayName);
         
-        // UI'yı metin kanalı moduna çek (aktif olan son metin kanalına dönebiliriz veya boş bırakabiliriz)
-        // Şimdilik sadece ses alanını gizleyip mesaj listesini gösterelim
-        messageList.classList.remove('hidden');
-        messageInputContainer.classList.remove('hidden');
-        voiceArea.classList.add('hidden');
+        // ADMIN KONTROLÜ (SADECE SİZİN İÇİN)
+        const ADMIN_UID = 'JU4pSd1VslcS6zJoaImsKjESzhl2';
+        const adminBtn = document.getElementById('admin-launcher-btn');
+        if (user.uid === ADMIN_UID) {
+            adminBtn.style.display = 'flex';
+        } else {
+            adminBtn.style.display = 'none';
+        }
+
+        // Kullanıcı dökümanını oluştur veya güncelle
+        await setDoc(doc(db, 'users', user.uid), {
+            uid: user.uid,
+            username: user.displayName,
+            photoURL: user.photoURL,
+            lastSeen: serverTimestamp()
+        }, { merge: true });
+
+        // BEKLEYEN DAVET VAR MI?
+        const pendingInvite = sessionStorage.getItem('pendingInvite');
+        if (pendingInvite) {
+            sessionStorage.removeItem('pendingInvite');
+            try {
+                await joinServer(pendingInvite);
+                showToast(`Başarıyla katıldın!`, "success");
+            } catch(err) {
+                showToast(err.message, "error");
+            }
+        }
         
-        chatHeaderName.innerText = "Sohbet";
-        currentVoiceChannelId = null;
-        if (unsubscribeVoiceMembers) unsubscribeVoiceMembers();
+        listenToServers();
+    } else {
+        console.log("Logged Out");
+        document.getElementById('admin-launcher-btn').style.display = 'none';
     }
 });
 
@@ -776,7 +1071,7 @@ window.addEventListener('leave-voice', async () => {
 document.addEventListener('click', async (e) => {
     const btn = e.target.closest('#add-text-channel-btn');
     if (btn) {
-        const name = prompt("Yeni metin kanalı adı:");
+        const name = await customPrompt("Yeni Metin Kanalı", "kanal-adi");
         if (name) await createChannel(name, 'text');
     }
 });
@@ -785,10 +1080,253 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('click', async (e) => {
     const btn = e.target.closest('#add-voice-channel-btn');
     if (btn) {
-        const name = prompt("Yeni ses kanalı adı:");
+        const name = await customPrompt("Yeni Ses Kanalı", "Sesli Sohbet");
         if (name) await createChannel(name, 'voice');
     }
 });
+
+// Sunucu Başlığına Tıklama -> Sunucu Ayarlarını Aç (Sahibiyse)
+document.getElementById('server-header-btn').onclick = async () => {
+    if (!currentServerId) return;
+    const canManage = await checkPermission('manage_server');
+    if (canManage) {
+        document.getElementById('server-settings-modal').classList.remove('hidden');
+        loadRoles(); 
+        loadRoleChannelsUI('new-role-channels'); // AYARLAR AÇILDIĞINDA KANALLARI DA YÜKLE
+    } else {
+        showToast("Sunucu ayarları için yetkiniz yok.", "error");
+    }
+};
+
+// Sunucu Ayarları Kapatma
+document.getElementById('close-server-settings').onclick = () => {
+    document.getElementById('server-settings-modal').classList.add('hidden');
+};
+
+// --- ROL OLUŞTURMA FİNAL ---
+document.getElementById('add-role-btn-final').onclick = async () => {
+    const name = document.getElementById('new-role-name').value.trim();
+    const color = document.getElementById('new-role-color').value;
+    const permissions = Array.from(document.querySelectorAll('#new-role-permissions input:checked')).map(cb => cb.value);
+    const accessibleChannels = Array.from(document.querySelectorAll('#new-role-channels input:checked')).map(cb => cb.value);
+
+    if (!name) return showToast("Rol ismi boş olamaz!", "error");
+
+    try {
+        await createRole(name, color, permissions, accessibleChannels);
+        showToast("Rol başarıyla oluşturuldu!", "success");
+        document.getElementById('new-role-name').value = '';
+        loadRoles();
+        // Checkboxları sıfırla
+        document.querySelectorAll('#new-role-permissions input, #new-role-channels input').forEach(cb => cb.checked = false);
+    } catch (err) {
+        showToast("Hata: " + err.message, "error");
+    }
+};
+
+// --- ROL YETKİ VE ERİŞİM KAYDETME ---
+document.getElementById('save-role-perms-btn').onclick = async () => {
+    if (!window.editingRoleId) return;
+    
+    const perms = Array.from(document.querySelectorAll('#role-editor input[data-perm]:checked')).map(cb => cb.dataset.perm);
+    const accessibleChannels = Array.from(document.querySelectorAll('#edit-role-channels input:checked')).map(cb => cb.value);
+
+    try {
+        await updateDoc(doc(db, 'servers', currentServerId, 'roles', window.editingRoleId), {
+            permissions: perms,
+            accessibleChannels: accessibleChannels
+        });
+        showToast("Rol güncellendi!", "success");
+        document.getElementById('role-editor').classList.add('hidden');
+        loadRoles();
+    } catch (err) {
+        showToast("Hata: " + err.message, "error");
+    }
+};
+
+// Ayarlar Sekme Geçişleri
+document.querySelectorAll('.settings-nav-item').forEach(item => {
+    item.onclick = () => {
+        const tab = item.dataset.tab;
+        document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+
+        if (tab === 'roles') {
+            document.getElementById('roles-tab').classList.remove('hidden');
+            document.getElementById('members-tab').classList.add('hidden');
+            document.getElementById('premium-tab').classList.add('hidden');
+            loadRoles();
+            loadRoleChannelsUI('new-role-channels');
+        } else if (tab === 'members') {
+            document.getElementById('roles-tab').classList.add('hidden');
+            document.getElementById('members-tab').classList.remove('hidden');
+            document.getElementById('premium-tab').classList.add('hidden');
+            loadMembersInSettings();
+        } else if (tab === 'premium') {
+            document.getElementById('roles-tab').classList.add('hidden');
+            document.getElementById('members-tab').classList.add('hidden');
+            document.getElementById('premium-tab').classList.remove('hidden');
+            loadPremiumStatus();
+        }
+    };
+});
+
+const loadPremiumStatus = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    const isPremium = userDoc.exists() && userDoc.data().isPremium;
+    
+    const indicator = document.getElementById('premium-status-indicator');
+    const statusText = document.getElementById('p-status-text');
+    const buyBtn = document.getElementById('buy-premium-btn');
+    const themeArea = document.getElementById('theme-selector-area');
+
+    if (isPremium) {
+        indicator.style.background = 'rgba(255, 215, 0, 0.2)';
+        statusText.innerText = "TEBRİKLER, PREMIUM ÜYESİNİZ! 🚀";
+        buyBtn.classList.add('hidden');
+        themeArea.classList.remove('hidden');
+    } else {
+        indicator.style.background = 'rgba(255, 215, 0, 0.05)';
+        statusText.innerText = "PREMIUM DEĞİLSİNİZ";
+        buyBtn.classList.remove('hidden');
+        themeArea.classList.add('hidden');
+    }
+};
+
+document.getElementById('buy-premium-btn').onclick = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    
+    const confirmed = await customConfirm("Premium Talebi", "Şu anda ödeme altyapımız bakımda olduğundan talebiniz manuel olarak incelenecektir. Yöneticiye Premium talebi göndermek istiyor musunuz?");
+    if (confirmed) {
+        try {
+            await setDoc(doc(db, 'premium_requests', user.uid), {
+                uid: user.uid,
+                username: user.displayName || user.username || "Kullanıcı",
+                status: 'pending',
+                createdAt: serverTimestamp()
+            });
+            showToast("Talebin galaktik komuta merkezine iletildi. Onaylanınca haberin olacak!", "success");
+        } catch(err) {
+            showToast("Talebin iletilemedi: " + err.message, "error");
+        }
+    }
+};
+
+// --- ADMIN PANELİ (KOMUTA MERKEZİ) MANTIĞI ---
+let unsubscribeRequests = null;
+
+document.getElementById('admin-launcher-btn').onclick = () => {
+    document.getElementById('admin-panel-modal').classList.remove('hidden');
+    loadPremiumRequests();
+};
+
+const loadPremiumRequests = () => {
+    const list = document.getElementById('admin-request-list');
+    list.innerHTML = '<div style="display: flex; justify-content: center; padding: 40px;"><i class="lucide-refresh-cw spin" style="color: gold; width: 40px; height: 40px;"></i></div>';
+
+    if (unsubscribeRequests) unsubscribeRequests();
+
+    unsubscribeRequests = onSnapshot(collection(db, 'premium_requests'), (snapshot) => {
+        list.innerHTML = '';
+        if (snapshot.empty) {
+            list.innerHTML = '<p style="color: var(--text-secondary); text-align: center; margin-top: 20px;">Henüz bekleyen talep yok.</p>';
+            return;
+        }
+
+        snapshot.docs.forEach(docSnap => {
+            const req = docSnap.data();
+            const date = req.createdAt?.toDate() ? req.createdAt.toDate().toLocaleDateString() : 'Bilinmiyor';
+            const card = document.createElement('div');
+            card.style.cssText = `
+                background: rgba(255,255,255,0.03); 
+                padding: 16px 20px; 
+                border-radius: 16px; 
+                display: flex; 
+                align-items: center; 
+                justify-content: space-between; 
+                border: 1px solid rgba(255,215,0,0.1);
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            `;
+            card.onmouseenter = () => {
+                card.style.background = 'rgba(255,215,0,0.05)';
+                card.style.borderColor = 'rgba(255,215,0,0.3)';
+                card.style.transform = 'translateX(5px)';
+            };
+            card.onmouseleave = () => {
+                card.style.background = 'rgba(255,255,255,0.03)';
+                card.style.borderColor = 'rgba(255,215,0,0.1)';
+                card.style.transform = 'none';
+            };
+
+            card.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="width: 45px; height: 45px; background: gold; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: black; font-weight: 900; font-size: 20px;">
+                        ${req.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                        <p style="color: white; font-weight: 800; font-size: 16px; margin: 0;">${req.username}</p>
+                        <p style="color: grey; font-size: 11px; margin: 2px 0;">ID: ${req.uid}</p>
+                        <p style="color: gold; font-size: 10px; font-weight: 700; opacity: 0.8;">📅 TALEP TARİHİ: ${date}</p>
+                    </div>
+                </div>
+                <button class="auth-btn" style="width: auto; background: gold; color: black; padding: 10px 20px; font-size: 12px; font-weight: 900; border-radius: 10px; box-shadow: 0 4px 15px rgba(255,215,0,0.2);" id="approve-${req.uid}">
+                    ONAYLA
+                </button>
+            `;
+            list.appendChild(card);
+
+            document.getElementById(`approve-${req.uid}`).onclick = async () => {
+                try {
+                    // Kullanıcıyı premium yap
+                    await updateDoc(doc(db, 'users', req.uid), { isPremium: true });
+                    // Talebi sil
+                    await deleteDoc(doc(db, 'premium_requests', req.uid));
+                    showToast(`${req.username} kullanıcısı artık bir galaktik premium! 🚀`, "success");
+                } catch(err) {
+                    showToast("Hata: " + err.message, "error");
+                }
+            };
+        });
+        lucide.createIcons();
+    });
+};
+
+const themes = {
+    default: { brand: '#c5a059', bg: '#05060f', side: 'rgba(10, 11, 24, 0.95)' },
+    solar: { brand: '#e94560', bg: '#1a1a2e', side: '#16213e' },
+    nebula: { brand: '#a000ff', bg: '#10002b', side: '#240046' }
+};
+
+document.querySelectorAll('.theme-option').forEach(btn => {
+    btn.onclick = () => {
+        const theme = themes[btn.dataset.theme];
+        document.documentElement.style.setProperty('--brand-color', theme.brand);
+        document.documentElement.style.setProperty('--bg-deep', theme.bg);
+        document.documentElement.style.setProperty('--bg-side', theme.side);
+        showToast(`Tema güncellendi: ${btn.dataset.theme}`, "success");
+    };
+});
+
+document.getElementById('save-custom-invite').onclick = async () => {
+    if (!currentServerId) return;
+    const newCode = document.getElementById('custom-invite-input').value.trim();
+    if (!newCode) return;
+    
+    // Çakışma kontrolü (Basitçe)
+    const q = query(collection(db, 'servers'), where('inviteCode', '==', newCode));
+    const snap = await getDocs(q);
+    if (!snap.empty) return showToast("Bu özel davet kodu başka bir galaksi tarafından kullanılıyor!", "error");
+
+    await updateDoc(doc(db, 'servers', currentServerId), { inviteCode: newCode });
+    showToast(`Bağlantın güncellendi: chatin/invite/${newCode}`, "success");
+};
+
+document.getElementById('delete-server-btn-trigger').onclick = () => {
+    deleteServer(currentServerId);
+};
 
 // Sunucu Ekleme Modalı Aç
 document.addEventListener('click', (e) => {
@@ -915,7 +1453,8 @@ document.addEventListener('click', async (e) => {
     const logoutTrigger = e.target.closest('#logout-btn-trigger');
     if (logoutTrigger) {
         const { logout } = await import('./auth.js');
-        if(confirm("Oturumu kapatmak istediğinize emin misiniz?")) {
+        const confirmed = await customConfirm("Oturumu Kapat", "Galaksiden ayrılmak istediğinize emin misiniz?");
+        if(confirmed) {
             await logout(); 
             window.location.reload();
         }
@@ -997,36 +1536,62 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-// SUNUCU AYARLARI TETİKLEYİCİ
-document.getElementById('server-header-btn').addEventListener('click', async () => {
-    if (!currentServerId) return;
-    const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
-    const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === auth.currentUser.uid;
-    
-    if (isOwner) {
-        document.getElementById('server-settings-modal').classList.remove('hidden');
-        loadRoles();
-    } else {
-        showToast("Sadece sunucu sahibi ayarlara erişebilir.", "error");
+// PROFİL KAYDETME (GIF KONTROLÜ İLE)
+document.getElementById('save-profile-btn').onclick = async () => {
+    const user = auth.currentUser;
+    const newName = document.getElementById('edit-profile-name-input').value.trim();
+    const newPfp = document.getElementById('edit-profile-pfp-input').value.trim();
+    const newBanner = document.getElementById('edit-profile-banner-input').value.trim();
+    const newEffect = document.getElementById('edit-profile-effect-input').value;
+    const newBio = document.getElementById('edit-profile-bio-input').value.trim();
+
+    if (!newName) return showToast("Kullanıcı adı boş olamaz!", "error");
+
+    // PREMIUM KONTROLÜ
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    const isPremium = userDoc.exists() && userDoc.data().isPremium;
+
+    if (!isPremium && (newPfp.toLowerCase().endsWith('.gif') || newBanner || newEffect !== 'none')) {
+        return showToast("Kapak fotoğrafı ve mesaj efektleri sadece Chatin Premium üyeleri içindir! 🚀", "error");
     }
-});
 
-document.getElementById('close-server-settings').onclick = () => {
-    document.getElementById('server-settings-modal').classList.add('hidden');
+    try {
+        await updateDoc(doc(db, 'users', user.uid), {
+            username: newName,
+            photoURL: newPfp,
+            bannerURL: newBanner,
+            messageEffect: newEffect,
+            bio: newBio
+        });
+        showToast("Profilin güncellendi!", "success");
+        document.getElementById('profile-modal-overlay').classList.add('hidden');
+    } catch(err) {
+        showToast("Profil güncelleme hatası: " + err.message, "error");
+    }
 };
 
-document.getElementById('add-role-btn').onclick = () => {
-    const name = document.getElementById('new-role-name').value;
-    const color = document.getElementById('new-role-color').value;
-    if (name) createRole(name, color);
+// EKSTRA LISTENER TEMIZLIGI - MUKERRERLERI KALDIRDIK 
+// (Tüm işlevler yukarıdaki ana event listener ve onclick yapılarında toplandı)
+// --- PREMIUM KARŞILAMA MODAL BUTONLARI ---
+document.getElementById('request-premium-welcome-btn').onclick = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+        await addDoc(collection(db, 'premium_requests'), {
+            uid: user.uid,
+            username: user.displayName || user.email.split('@')[0],
+            email: user.email,
+            status: 'pending',
+            createdAt: serverTimestamp()
+        });
+        showToast("Premium talebi Galaksi Adminine iletildi!", "success");
+        document.getElementById('premium-welcome-modal').classList.add('hidden');
+    } catch (err) {
+        showToast("Hata: " + err.message, "error");
+    }
 };
 
-document.getElementById('save-role-perms-btn').onclick = async () => {
-    if (!editingRoleId) return;
-    const perms = [];
-    document.querySelectorAll('#permissions-grid input:checked').forEach(cb => {
-        perms.push(cb.dataset.perm);
-    });
-    await updateRolePermissions(editingRoleId, perms);
-    document.getElementById('role-editor').classList.add('hidden');
+document.getElementById('close-premium-welcome-btn').onclick = () => {
+    document.getElementById('premium-welcome-modal').classList.add('hidden');
 };

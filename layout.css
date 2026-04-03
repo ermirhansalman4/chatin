@@ -174,12 +174,12 @@ body {
 
 .status-actions {
     display: flex;
-    gap: 4px;
+    gap: 2px;
 }
 
 .icon-button {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -405,9 +405,77 @@ body {
     
     #voice-actions-bar {
         padding: 10px 16px;
-        gap: 12px;
         width: 90%;
     }
+}
+
+/* --- PREMIUM EFFECTS --- */
+.profile-banner {
+    width: 100%;
+    height: 120px;
+    background-size: cover;
+    background-position: center;
+    border-radius: 12px 12px 0 0;
+    margin-top: -24px;
+    margin-left: -24px;
+    width: calc(100% + 48px);
+    margin-bottom: 12px;
+    background-color: var(--bg-deep); /* Default if no banner */
+    border-bottom: 2px solid var(--border-gold);
+}
+
+.effect-neon {
+    color: #fff;
+    text-shadow: 0 0 5px #fff, 0 0 10px var(--brand-color), 0 0 20px var(--brand-color);
+    animation: neon-pulse 1.5s infinite alternate;
+}
+
+@keyframes neon-pulse {
+    from { text-shadow: 0 0 5px #fff, 0 0 10px var(--brand-color), 0 0 20px var(--brand-color); }
+    to { text-shadow: 0 0 2px #fff, 0 0 5px var(--brand-color), 0 0 10px var(--brand-color); }
+}
+
+.effect-glitch {
+    position: relative;
+    display: inline-block;
+}
+
+.effect-glitch::before, .effect-glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+}
+
+.effect-glitch::before {
+    left: 2px;
+    text-shadow: -2px 0 #ff00c1;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim 5s infinite linear alternate-reverse;
+}
+
+.effect-glitch::after {
+    left: -2px;
+    text-shadow: -2px 0 #00fff9;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim2 5s infinite linear alternate-reverse;
+}
+
+@keyframes glitch-anim {
+    0% { clip: rect(10px, 9999px, 20px, 0); }
+    20% { clip: rect(30px, 9999px, 40px, 0); }
+    40% { clip: rect(50px, 9999px, 60px, 0); }
+    60% { clip: rect(70px, 9999px, 80px, 0); }
+    80% { clip: rect(90px, 9999px, 100px, 0); }
+    100% { clip: rect(10px, 9999px, 20px, 0); }
+}
+
+@keyframes glitch-anim2 {
+    0% { clip: rect(80px, 9999px, 90px, 0); }
+    20% { clip: rect(60px, 9999px, 70px, 0); }
+    40% { clip: rect(40px, 9999px, 50px, 0); }
+    60% { clip: rect(20px, 9999px, 30px, 0); }
+    80% { clip: rect(5px, 9999px, 15px, 0); }
+    100% { clip: rect(80px, 9999px, 90px, 0); }
 }
 
 /* --- SETTINGS POPOVER --- */
@@ -450,12 +518,89 @@ body {
     background: rgba(255, 71, 87, 0.1);
 }
 
+/* --- SERVER SETTINGS MODAL IMPROVEMENTS --- */
+#server-settings-modal {
+    background: radial-gradient(circle at top left, #0a0b18, #05060f);
+    display: flex;
+}
+
+.settings-sidebar {
+    width: 280px;
+    padding: 60px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.settings-nav-item {
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    transition: 0.2s;
+}
+
+.settings-nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.settings-nav-item.active {
+    background: rgba(197, 160, 89, 0.1);
+    color: var(--brand-color);
+    box-shadow: inset 0 0 10px rgba(197, 160, 89, 0.05);
+}
+
+.settings-content {
+    flex: 1;
+    padding: 60px 80px;
+    overflow-y: auto;
+    background: transparent;
+}
+
+/* Glassmorphism for Dialog Cards */
+.settings-card {
+    background: rgba(15, 16, 32, 0.8) !important;
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-gold) !important;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 20px rgba(197, 160, 89, 0.1) !important;
+}
+
+/* Custom Role Pills in Settings */
+.role-pill-manage {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.mini-role-pill {
+    transition: 0.2s;
+    user-select: none;
+}
+
+.mini-role-pill:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.2);
+}
+
+/* Scrollbar for settings */
+.settings-content::-webkit-scrollbar {
+    width: 6px;
+}
+.settings-content::-webkit-scrollbar-thumb {
+    background: var(--border-gold);
+    border-radius: 10px;
+}
+
 @media (max-width: 1024px) {
-    #settings-popover {
-        bottom: auto;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 280px;
-    }
+    .settings-sidebar { width: 100%; position: absolute; left: -100%; transition: 0.3s; }
+    #server-settings-modal.mobile-sidebar-open .settings-sidebar { left: 0; }
+    .settings-content { padding: 40px 20px; }
 }

@@ -3,7 +3,6 @@ import { getAuth, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-analytics.js";
 
 // Firebase Configuration provided by USER
 const firebaseConfig = {
@@ -19,7 +18,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// const analytics = getAnalytics(app); // Analytics disabled to avoid ERR_NAME_NOT_RESOLVED
 
 // Export Services
 export const auth = getAuth(app);

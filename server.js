@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 8080;
+const PORT = 3001;
 const HOST = '0.0.0.0'; // Bind to all interfaces (IPv4)
 
 const MIME_TYPES = {
@@ -25,6 +25,46 @@ const MIME_TYPES = {
 
 const server = http.createServer((req, res) => {
   console.log(`${req.method} ${req.url}`);
+
+  // --- SHOPIER CALLBACK (ÖDEME BİLDİRİMİ) ---
+  if (req.url === '/shopier-callback' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      // Not: Burası Shopier panelindeki Geri Bildirim URL'sine bağlandığında otomatik tetiklenir.
+      console.log("Shopier Bildirimi Geldi, İşleniyor...");
+      res.writeHead(200);
+      res.end('OK');
+    });
+    return;
+  }
+
+  // --- ÖDEME SİSTEMİ (SIMULASYON) ---
+  if (req.url === '/create-checkout-session' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      const { userId } = JSON.parse(body);
+      const mockSessionUrl = `http://localhost:3001/payment-success?userId=${userId}`;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ url: mockSessionUrl }));
+    });
+    return;
+  }
+
+  if (req.url.startsWith('/payment-success')) {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`
+        <div style="background:#05060f; color:#c5a059; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;">
+            <h1 style="font-size:48px;">🚀 ÖDEME BAŞARILI!</h1>
+            <p style="color:#fff;">Galaktik Premium üyeliğiniz onaylandı. Yönlendiriliyorsunuz...</p>
+            <script>
+                setTimeout(() => { window.location.href = "/"; }, 3000);
+            </script>
+        </div>
+    `);
+    return;
+  }
 
   const FB_CONFIG = JSON.stringify({
     apiKey: "AIzaSyDDqB8GUVKd5eCBErI2BXMJLU1ls_RwDak",
