@@ -738,8 +738,16 @@
                 });
 
                 showToast("Profil başarıyla güncellendi!", "success");
-                profileModal.classList.add('hidden');
-                setTimeout(() => window.location.reload(), 1000);
+                document.getElementById('profile-edit-mode').classList.add('hidden');
+                document.getElementById('profile-view-mode').classList.remove('hidden');
+                document.getElementById('profile-modal-overlay').classList.add('hidden');
+
+                // Anlık UI Güncellemesi
+                document.getElementById('current-user-name').innerText = newName;
+                if (newPfp) document.getElementById('current-user-avatar').src = newPfp;
+                
+                // app.js içindeki profil yükleme fonksiyonunu tetikle
+                if (window.loadUserProfile) window.loadUserProfile(auth.currentUser.uid);
             } catch (err) {
                 showToast("Güncelleme hatası: " + err.message, "error");
                 saveProfileBtn.disabled = false;

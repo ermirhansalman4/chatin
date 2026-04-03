@@ -101,7 +101,6 @@ onAuthStateChanged(auth, (user) => {
         setupPresence(user.uid);
         window.dispatchEvent(new CustomEvent('auth-success', { detail: user }));
     } else {
-        console.log("Logged Out");
         window.dispatchEvent(new CustomEvent('auth-logout'));
     }
 });
