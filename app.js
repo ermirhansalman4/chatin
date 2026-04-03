@@ -645,7 +645,8 @@ setupEmojiItems(); // Initial setup
 const toggleDMView = () => {
     if (isDMMode) {
         dmSidebarTrigger?.classList.add('active');
-        document.getElementById('current-server-name').innerText = "Özel Mesajlar";
+        const activeServerNameElem = document.getElementById('active-server-name');
+        if (activeServerNameElem) activeServerNameElem.innerText = "Özel Mesajlar";
         document.getElementById('current-channel-name').innerText = "Arkadaş Seç";
         document.getElementById('channel-list').innerHTML = '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-secondary); opacity:0.6;"><i data-lucide="message-square" style="width:48px; height:48px; margin-bottom:16px;"></i><p>Mesajlaşmak için bir kankanı seç!</p></div>';
         loadDMList();
@@ -654,12 +655,14 @@ const toggleDMView = () => {
         document.getElementById('server-members-list-container')?.classList.add('hidden');
     } else {
         dmSidebarTrigger?.classList.remove('active');
+        const activeServerNameElem = document.getElementById('active-server-name');
+        if (activeServerNameElem) activeServerNameElem.innerText = currentServerName || "Sunucu Seçin";
         document.getElementById('voice-channels-area')?.classList.remove('hidden');
         document.getElementById('server-members-list-container')?.classList.remove('hidden');
         
         if (currentServerId) {
-            renderChannels(currentServerId);
-            renderMembers(currentServerId);
+            listenToChannels(currentServerId);
+            // Members will be handled by listenToChannels or should be refreshed
         } else {
             document.getElementById('channel-list').innerHTML = '<div style="padding:20px; text-align:center; color:gray;">Bir galaksi seç veya arkadaşlarınla konuş!</div>';
         }
