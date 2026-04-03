@@ -162,56 +162,7 @@ export const listenToMessages = (channelId) => {
     });
 };
 
-/**
- * Mesaj gönder
- */
-export const sendMessage = async (text, file = null) => {
-    if (!text && !file) return;
 
-    try {
-        const user = auth.currentUser;
-        if (!user) return;
-
-        let fileURL = null;
-        if (file) {
-            fileURL = await uploadFile(file);
-        }
-
-        // Kullanıcı efektini al
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const userData = userDoc.exists() ? userDoc.data() : {};
-
-        await addDoc(collection(db, 'messages'), {
-            channelId: currentChannelId,
-            uid: user.uid,
-            username: user.displayName || user.username || 'Anonim',
-            userPhoto: user.photoURL,
-            text: text || '',
-            fileURL: fileURL,
-            messageEffect: userData.messageEffect || 'none',
-            createdAt: serverTimestamp()
-        });
-
-        if (document.getElementById('chat-input')) {
-            document.getElementById('chat-input').value = '';
-        }
-    } catch (error) {
-        console.error("Message send error:", error);
-        showToast("Mesaj gönderilemedi: " + error.message, "error");
-    }
-};
-
-/**
- * Dosya yükleme (Base64 yöntemi ile CORS sorununu baypas eder)
- */
-const uploadFile = async (file) => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = (error) => reject(error);
-        reader.readAsDataURL(file);
-    });
-};
 
 /**
  * Mesajı UI'da render et
@@ -364,18 +315,7 @@ export const toggleReaction = async (msgId, emoji) => {
 
 // --- EVENT LISTENERS ---
 
-// --- MEDIA UPLOAD HANDLER ---
-const chatMediaInput = document.getElementById('chat-media-input');
-if (chatMediaInput) {
-    chatMediaInput.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            showToast("Medya yükleniyor...", "info");
-            await sendMessage("", file);
-            chatMediaInput.value = '';
-        }
-    };
-}
+
 
 // --- EMOJI PICKER ADVANCED LOGIC ---
 const emojiBtn = document.getElementById('emoji-btn');
@@ -522,36 +462,96 @@ const listenToDMs = (recipientUid) => {
     });
 };
 
-chatInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        if (isDMMode && currentDMRecipientId) {
-            sendDM(chatInput.value);
-        } else {
-            sendMessage(chatInput.value);
+// --- CHAT INPUT & SENDING ---
+if (chatInput) {
+    chatInput.onkeypress = (e) => {
+        if (e.key === 'Enter') {
+            const val = chatInput.value.trim();
+            if (!val) return;
+            if (isDMMode && currentDMRecipientId) {
+                sendDM(val);
+            } else if (currentChannelId) {
+                sendMessage(val);
+            }
+            chatInput.value = '';
         }
-    }
-});
+    };
+}
 
-const sendDM = async (text, file = null) => {
-    if (!text && !file) return;
-    const sender = auth.currentUser;
-    const recipientUid = currentDMRecipientId;
-    const participants = [sender.uid, recipientUid].sort();
+// --- CHAT MEDIA UPLOAD (BASE64) ---
+const handleChatMediaUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 1024 * 1024) {
+        return showToast("Dosya çok büyük! (Max 1MB)", "error");
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        const base64Data = event.target.result;
+        try {
+            if (isDMMode && currentDMRecipientId) {
+                await sendDM(base64Data, true);
+            } else if (currentChannelId) {
+                await sendMessage(base64Data, true);
+            }
+            showToast("Görsel gönderildi! 📸");
+        } catch (err) {
+            showToast("Görsel hatası: " + err.message, "error");
+        }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+};
+
+const chatMediaInput = document.getElementById('chat-media-input');
+if (chatMediaInput) {
+    chatMediaInput.onchange = handleChatMediaUpload;
+}
+
+export const sendMessage = async (content, isFile = false) => {
+    if (!auth.currentUser || !currentChannelId) return;
+
+    const msgData = {
+        uid: auth.currentUser.uid,
+        username: auth.currentUser.displayName || "Kullanıcı",
+        photoURL: auth.currentUser.photoURL,
+        timestamp: serverTimestamp(),
+        reactions: {}
+    };
+
+    if (isFile) {
+        msgData.fileURL = content;
+        msgData.text = "";
+    } else {
+        msgData.text = content;
+    }
+
+    await addDoc(collection(db, `servers/${currentServerId}/channels/${currentChannelId}/messages`), msgData);
+};
+
+export const sendDM = async (content, isFile = false) => {
+    if (!auth.currentUser || !currentDMRecipientId) return;
+
+    const participants = [auth.currentUser.uid, currentDMRecipientId].sort();
     const dmId = participants.join('_');
 
-    let fileURL = null;
-    if (file) fileURL = await uploadFile(file);
+    const msgData = {
+        uid: auth.currentUser.uid,
+        username: auth.currentUser.displayName || "Kullanıcı",
+        timestamp: serverTimestamp(),
+        reactions: {}
+    };
 
-    await addDoc(collection(db, 'direct_messages'), {
-        dmId,
-        uid: sender.uid,
-        username: sender.displayName || 'Anonim',
-        userPhoto: sender.photoURL,
-        text,
-        fileURL,
-        createdAt: serverTimestamp()
-    });
-    chatInput.value = '';
+    if (isFile) {
+        msgData.fileURL = content;
+        msgData.text = "";
+    } else {
+        msgData.text = content;
+    }
+
+    await addDoc(collection(db, `direct_messages/${dmId}/messages`), msgData);
 };
 
 export const createServer = async (serverName) => {
@@ -634,11 +634,13 @@ export const deleteServer = async (serverId) => {
     try {
         await deleteDoc(doc(db, 'servers', serverId));
         showToast("Sunucu başarıyla imha edildi.", "info");
-        window.location.reload(); // Kolay yoldan state temizliği
+        window.location.reload(); 
     } catch(err) {
         showToast("Silme hatası: " + err.message, "error");
     }
 };
+
+// --- SERVER & CHANNEL LOGIC ---
 
 export const listenToServers = () => {
     const user = auth.currentUser;
@@ -1906,94 +1908,7 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-// --- DOSYA YÜKLEME YARDIMCISI ---
-const uploadProfileFile = async (file, path) => {
-    if (!file) return null;
-    const storageRef = ref(storage, path);
-    await uploadBytesResumable(storageRef, file);
-    return await getDownloadURL(storageRef);
-};
 
-// PROFİL KAYDETME (DOSYA YÜKLEME DESTEĞİ İLE)
-document.getElementById('save-profile-btn').onclick = async () => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const btn = document.getElementById('save-profile-btn');
-    const originalText = btn.innerText;
-    btn.innerText = "YÜKLENİYOR...";
-    btn.disabled = true;
-
-    try {
-        const newName = document.getElementById('edit-profile-name-input').value.trim();
-        const pfpFile = document.getElementById('pfp-file-input').files[0];
-        const bannerFile = document.getElementById('banner-file-input').files[0];
-        
-        let newPfp = document.getElementById('edit-profile-pfp-input').value.trim();
-        let newBanner = document.getElementById('edit-profile-banner-input').value.trim();
-        const newEffect = document.getElementById('edit-profile-effect-input').value;
-        const newBio = document.getElementById('edit-profile-bio-input').value.trim();
-
-        if (!newName) {
-            btn.innerText = originalText;
-            btn.disabled = false;
-            return showToast("Kullanıcı adı boş olamaz!", "error");
-        }
-
-        // --- PREMIUM KONTROLÜ ---
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const isPremium = userDoc.exists() && userDoc.data().isPremium;
-
-        // Dosya yüklemeleri
-        if (pfpFile) {
-            newPfp = await uploadProfileFile(pfpFile, `pfps/${user.uid}_${Date.now()}`);
-        }
-        if (bannerFile) {
-            if (!isPremium) {
-                btn.innerText = originalText;
-                btn.disabled = false;
-                return showToast("Kapak fotoğrafı sadece Chatin Premium üyeleri içindir! 🚀", "error");
-            }
-            newBanner = await uploadProfileFile(bannerFile, `banners/${user.uid}_${Date.now()}`);
-        }
-
-        if (!isPremium && (newPfp.toLowerCase().endsWith('.gif') || (newBanner && !userDoc.data().bannerURL) || newEffect !== 'none')) {
-            btn.innerText = originalText;
-            btn.disabled = false;
-            return showToast("Banner ve mesaj efektleri sadece Premium üyeler içindir! 🚀", "error");
-        }
-
-        await updateDoc(doc(db, 'users', user.uid), {
-            username: newName,
-            photoURL: newPfp,
-            bannerURL: newBanner,
-            messageEffect: newEffect,
-            bio: newBio
-        });
-
-        showToast("Profilin galakside güncellendi! ✨", "success");
-        document.getElementById('profile-edit-mode').classList.add('hidden');
-        document.getElementById('profile-modal').classList.add('hidden');
-        
-        // UI'ı hemen güncelle
-        if (window.loadUserProfile) window.loadUserProfile(user.uid);
-        
-    } catch (err) {
-        console.error(err);
-        showToast("Profil güncellenirken hata oluştu!", "error");
-    } finally {
-        btn.innerText = originalText;
-        btn.disabled = false;
-    }
-};
-
-// Dosya seçilince input box'ta ismini göster (OPSİYONEL)
-document.getElementById('pfp-file-input').onchange = (e) => {
-    if (e.target.files[0]) document.getElementById('edit-profile-pfp-input').value = e.target.files[0].name;
-};
-document.getElementById('banner-file-input').onchange = (e) => {
-    if (e.target.files[0]) document.getElementById('edit-profile-banner-input').value = e.target.files[0].name;
-};
 // --- PREMIUM KARŞILAMA MODAL BUTONLARI ---
 document.getElementById('request-premium-welcome-btn').onclick = async () => {
     const user = auth.currentUser;
