@@ -99,7 +99,7 @@ const initFriendsUI = () => {
                     userSearchResults.innerHTML = '';
                     return;
                 }
-                const q = query(collection(db, 'users'), where('username', '==', queryStr.toLowerCase()));
+                const q = query(collection(db, 'users'), where('username_lower', '==', queryStr.toLowerCase()));
                 const snap = await getDocs(q);
                 renderSearchResults(snap.docs);
             }, 500);
@@ -1634,7 +1634,8 @@ auth.onAuthStateChanged(async (user) => {
         // Kullanıcı dökümanını oluştur veya güncelle
         await setDoc(doc(db, 'users', user.uid), {
             uid: user.uid,
-            username: user.displayName,
+            username: user.displayName || "Glgesi",
+            username_lower: (user.displayName || "").toLowerCase(),
             photoURL: user.photoURL,
             lastSeen: serverTimestamp()
         }, { merge: true });
