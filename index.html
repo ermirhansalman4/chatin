@@ -169,8 +169,6 @@
                     <span id="msg-plus-icon" style="cursor: pointer; color: var(--brand-color);" onclick="document.getElementById('chat-media-input').click()"><i data-lucide="plus-circle"></i></span>
                     <input type="text" id="chat-input" placeholder="Mesajınızı gönderin...">
                     <div class="input-actions" style="position: relative; display: flex; gap: 12px; align-items: center;">
-                        <span id="gift-btn" title="Hediye"><i data-lucide="gift"></i></span>
-                        <span id="note-btn" title="Not"><i data-lucide="sticky-note"></i></span>
                         <span id="file-btn" title="Dosya Ekle" style="cursor: pointer; color: var(--text-secondary);" onclick="document.getElementById('chat-media-input').click()"><i data-lucide="paperclip"></i></span>
                         <span id="emoji-btn" title="Emoji" style="cursor: pointer; color: var(--text-secondary);"><i data-lucide="smile"></i></span>
 
@@ -713,12 +711,19 @@
         };
 
         // SAVE PROFILE
-        document.getElementById('save-profile-btn').onclick = async () => {
+        const saveProfileBtn = document.getElementById('save-profile-btn');
+        saveProfileBtn.onclick = async () => {
             const newPfp = document.getElementById('edit-profile-pfp-input').value.trim();
+            const newBanner = document.getElementById('edit-profile-banner-input').value.trim();
             const newName = document.getElementById('edit-profile-name-input').value.trim();
             const newBio = document.getElementById('edit-profile-bio-input').value.trim();
+            const newEffect = document.getElementById('edit-profile-effect-input').value;
 
             if (!newName) return showToast("İsim boş bırakılamaz!", "error");
+
+            const originalBtnText = saveProfileBtn.innerText;
+            saveProfileBtn.disabled = true;
+            saveProfileBtn.innerText = "YÜKLENİYOR...";
 
             try {
                 const { db, auth } = await import('./firebase.config.js');
@@ -727,16 +732,40 @@
                 await updateDoc(doc(db, 'users', auth.currentUser.uid), {
                     username: newName,
                     photoURL: newPfp,
-                    bio: newBio
+                    bannerURL: newBanner,
+                    bio: newBio,
+                    messageEffect: newEffect
                 });
 
                 showToast("Profil başarıyla güncellendi!", "success");
                 profileModal.classList.add('hidden');
-                window.location.reload(); // Değişikliklerin her yerde yansıması için
+                setTimeout(() => window.location.reload(), 1000);
             } catch (err) {
                 showToast("Güncelleme hatası: " + err.message, "error");
+                saveProfileBtn.disabled = false;
+                saveProfileBtn.innerText = originalBtnText;
             }
         };
+
+        // PROFILE & BANNER FILE HANDLERS
+        const handleFileUpload = (inputId, displayId) => {
+            const input = document.getElementById(inputId);
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 1024 * 1024) return showToast("Dosya çok büyük! (Max 1MB)", "error");
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    document.getElementById(displayId).value = event.target.result;
+                    showToast("Görsel hazır! Kaydet butonuna basmayı unutma.");
+                };
+                reader.readAsDataURL(file);
+            };
+        };
+
+        handleFileUpload('pfp-file-input', 'edit-profile-pfp-input');
+        handleFileUpload('banner-file-input', 'edit-profile-banner-input');
 
         // Emoji Picker Toggle (Yerel Sayfa İşlevi)
         const emojiBtn = document.getElementById('emoji-btn');
