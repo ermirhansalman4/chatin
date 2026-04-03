@@ -54,7 +54,7 @@ let isDMMode = false;
 let unsubscribeDMs = null;
 
 // FRIENDSHIP UI ELEMENTS (GLOBAL)
-let friendsModal, userSearchInput, userSearchResults, incomingRequestsList, friendRequestBadge, requestsTabBadge;
+let friendsModal, userSearchInput, userSearchResults, incomingRequestsList, friendRequestBadge, requestsTabBadge, dmSidebarTrigger;
 
 // --- FRIENDSHIP SYSTEM UI & LOGIC ---
 
@@ -70,7 +70,7 @@ const initFriendsUI = () => {
     const closeFriendsBtn = document.getElementById('close-friends-btn');
     const searchTabBtn = document.getElementById('search-tab-btn');
     const requestsTabBtn = document.getElementById('requests-tab-btn');
-    const dmSidebarTrigger = document.getElementById('dm-sidebar-trigger');
+    dmSidebarTrigger = document.getElementById('dm-sidebar-trigger');
 
     if (dmSidebarTrigger) {
         dmSidebarTrigger.onclick = () => {
