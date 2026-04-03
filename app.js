@@ -144,10 +144,16 @@ export const listenToMessages = (channelId) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
                 renderMessage(change.doc.data(), change.doc.id);
+            } else if (change.type === "modified") {
+                updateMessageUI(change.doc.data(), change.doc.id);
+            } else if (change.type === "removed") {
+                removeMessageUI(change.doc.id);
             }
         });
         // En aşağı kaydır
-        messageList.scrollTop = messageList.scrollHeight;
+        if (snapshot.docChanges().some(c => c.type === 'added')) {
+            messageList.scrollTop = messageList.scrollHeight;
+        }
     }, (error) => {
         console.error("Mesajlar yüklenirken hata oluştu:", error);
         if (error.code === 'failed-precondition') {
@@ -212,39 +218,304 @@ const uploadFile = async (file) => {
  */
 const renderMessage = (data, id) => {
     const time = data.createdAt?.toDate() ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Az önce';
+    const isMe = data.uid === auth.currentUser?.uid;
     
+    // TEPKİLERİ HESAPLA
+    let reactionHtml = '';
+    if (data.reactions) {
+        reactionHtml = '<div class="reactions-list">';
+        for (const [emoji, uids] of Object.entries(data.reactions)) {
+            if (uids.length > 0) {
+                const mine = uids.includes(auth.currentUser?.uid) ? 'mine' : '';
+                reactionHtml += `
+                    <div class="reaction-item ${mine}" data-emoji="${emoji}">
+                        <span>${emoji}</span>
+                        <span class="reaction-count">${uids.length}</span>
+                    </div>
+                `;
+            }
+        }
+        reactionHtml += '</div>';
+    }
+
     const msgHtml = `
-        <div class="message-item" id="${id}" style="display: flex; gap: 16px; margin-bottom: 16px;">
+        <div class="message" id="msg-${id}" data-id="${id}" style="display: flex; gap: 16px; margin-bottom: 12px; position: relative;">
+            <div class="message-actions-bar">
+                <div class="action-icon reaction-btn" title="Tepki Ekle"><i data-lucide="smile" style="width:14px;"></i></div>
+                ${isMe ? `
+                    <div class="action-icon edit-btn" title="Düzenle"><i data-lucide="edit-3" style="width:14px;"></i></div>
+                    <div class="action-icon delete delete-msg-btn" title="Sil"><i data-lucide="trash-2" style="width:14px;"></i></div>
+                ` : ''}
+            </div>
+
             <img class="msg-avatar" src="${data.userPhoto || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" 
                  style="width: 40px; height: 40px; border-radius: 50%; cursor: pointer;">
-            <div>
+            <div style="flex:1;">
                 <div style="display: flex; gap: 8px; align-items: baseline;">
                     <span class="msg-username" style="font-weight: bold; color: #fff; cursor: pointer;">
                         ${data.username}
                     </span>
                     <span style="font-size: 12px; color: var(--text-secondary);">${time}</span>
+                    ${data.isEdited ? '<span style="font-size: 10px; color: var(--text-secondary); italic;">(düzenlendi)</span>' : ''}
                 </div>
-                <p class="${data.messageEffect ? 'effect-' + data.messageEffect : ''}" data-text="${data.text}" style="color: #dcddde; margin-top: 2px;">${data.text}</p>
-                ${data.fileURL ? `<img src="${data.fileURL}" style="max-width: 300px; border-radius: 8px; margin-top: 8px; cursor: pointer;">` : ''}
+                <div class="msg-body">
+                    <p class="${data.messageEffect ? 'effect-' + data.messageEffect : ''}" data-text="${data.text || ''}" style="color: #dcddde; margin-top: 2px; white-space: pre-wrap; word-break: break-word;">${data.text || ''}</p>
+                    ${data.fileURL ? `<img src="${data.fileURL}" class="media-message-img">` : ''}
+                </div>
+                ${reactionHtml}
             </div>
         </div>
     `;
     messageList.insertAdjacentHTML('beforeend', msgHtml);
     
-    // Güvenli Tıklama Dinleyicileri (CSP Friendly)
     const item = messageList.lastElementChild;
-    const profileOpen = () => window.openUserProfile({username: data.username, photoURL: data.userPhoto});
+    const profileOpen = () => window.openUserProfile({username: data.username, photoURL: data.userPhoto, uid: data.uid});
     item.querySelector('.msg-avatar').addEventListener('click', profileOpen);
     item.querySelector('.msg-username').addEventListener('click', profileOpen);
+
+    // ACTIONS
+    if (isMe) {
+        item.querySelector('.delete-msg-btn').onclick = () => deleteMessage(id);
+        item.querySelector('.edit-btn').onclick = () => startEditMessage(id, data.text);
+    }
+    
+    item.querySelector('.reaction-btn').onclick = (e) => {
+        const picker = document.getElementById('emoji-picker');
+        picker.classList.toggle('hidden');
+        // Simple reaction append for demo or specific logic
+        window.lastReactionMsgId = id;
+    };
+
+    // Reaction list clicks
+    item.querySelectorAll('.reaction-item').forEach(r => {
+        r.onclick = () => toggleReaction(id, r.dataset.emoji);
+    });
+
+    lucide.createIcons();
+};
+
+const updateMessageUI = (data, id) => {
+    const oldMsg = document.getElementById(`msg-${id}`);
+    if (oldMsg) {
+        const scrollPos = messageList.scrollTop;
+        const isAtBottom = (messageList.scrollHeight - messageList.scrollTop) <= (messageList.clientHeight + 50);
+        
+        oldMsg.remove();
+        renderMessage(data, id);
+        
+        // Pozisyonu koru veya aşağı kaydır
+        if (!isAtBottom) messageList.scrollTop = scrollPos;
+    }
+};
+
+const removeMessageUI = (id) => {
+    const msg = document.getElementById(`msg-${id}`);
+    if (msg) msg.remove();
+};
+
+export const deleteMessage = async (id) => {
+    const ok = await customConfirm("Mesajı Sil", "Bu mesajı sonsuza dek galaksiden silmek istediğinize emin misiniz? 🛸");
+    if (ok) {
+        try {
+            await deleteDoc(doc(db, 'messages', id));
+        } catch (err) {
+            showToast("Silme başarısız!", "error");
+        }
+    }
+};
+
+export const startEditMessage = async (id, oldText) => {
+    const newText = await customPrompt("Mesajı Düzenle", oldText);
+    if (newText !== null && newText !== oldText) {
+        await updateDoc(doc(db, 'messages', id), {
+            text: newText,
+            isEdited: true
+        });
+    }
+};
+
+export const toggleReaction = async (msgId, emoji) => {
+    const uid = auth.currentUser.uid;
+    const msgRef = doc(db, 'messages', msgId);
+    const msgSnap = await getDoc(msgRef);
+    if (!msgSnap.exists()) return;
+
+    const data = msgSnap.data();
+    let reactions = data.reactions || {};
+    
+    if (!reactions[emoji]) reactions[emoji] = [];
+    
+    if (reactions[emoji].includes(uid)) {
+        reactions[emoji] = reactions[emoji].filter(u => u !== uid);
+    } else {
+        reactions[emoji].push(uid);
+    }
+
+    await updateDoc(msgRef, { reactions });
 };
 
 // --- EVENT LISTENERS ---
 
+// --- MEDIA UPLOAD HANDLER ---
+const chatMediaInput = document.getElementById('chat-media-input');
+if (chatMediaInput) {
+    chatMediaInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            showToast("Medya yükleniyor...", "info");
+            await sendMessage("", file);
+            chatMediaInput.value = '';
+        }
+    };
+}
+
+// --- EMOJI PICKER IMPROVED ---
+document.querySelectorAll('.emoji-item').forEach(item => {
+    item.onclick = () => {
+        // Eğer bir mesaja tepki verme modundaysak (son tıklanan mesaj ID'si varsa)
+        if (window.lastReactionMsgId) {
+            toggleReaction(window.lastReactionMsgId, item.innerText);
+            window.lastReactionMsgId = null;
+            document.getElementById('emoji-picker').classList.add('hidden');
+        } else {
+            // Normal mesaj kutusuna ekle
+            chatInput.value += item.innerText;
+            chatInput.focus();
+        }
+    };
+});
+
+// --- DM (DIRECT MESSAGES) SYSTEM ---
+let isDMMode = false;
+let currentDMRecipientId = null;
+let unsubscribeDMs = null;
+
+const dmSidebarTrigger = document.getElementById('dm-sidebar-trigger');
+dmSidebarTrigger.onclick = () => {
+    isDMMode = !isDMMode;
+    toggleDMView();
+};
+
+const toggleDMView = () => {
+    const serversList = document.getElementById('server-list');
+    const channelsSidebar = document.getElementById('channels-sidebar');
+    const serverHeader = document.getElementById('server-header');
+    
+    if (isDMMode) {
+        dmSidebarTrigger.classList.add('active');
+        // Sunucu listesini değil, kanalları değiştiriyoruz
+        document.getElementById('current-server-name').innerText = "Özel Mesajlar";
+        document.getElementById('channels-container').innerHTML = '<div style="padding:10px; color:var(--text-secondary); font-size:12px;">Yakınlardaki Galaksiler (DM)</div>';
+        loadDMList();
+        
+        // Sunucu bazlı UI'ları gizle
+        document.getElementById('voice-channels-area').classList.add('hidden');
+    } else {
+        dmSidebarTrigger.classList.remove('active');
+        // Sunucu moduna geri dön
+        if (currentServerId) {
+            const btn = document.querySelector(`.server-icon[data-id="${currentServerId}"]`);
+            if (btn) btn.click();
+        }
+    }
+};
+
+const loadDMList = async () => {
+    const container = document.getElementById('channels-container');
+    // Basitçe sunucudaki üyeleri veya genel üyeleri göster (Örnek olarak genel üyeler)
+    const q = query(collection(db, 'users'), limit(20));
+    const snap = await getDocs(q);
+    
+    let html = '';
+    snap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.uid === auth.currentUser.uid) return;
+        
+        html += `
+            <div class="dm-user-item ${currentDMRecipientId === data.uid ? 'active' : ''}" data-uid="${data.uid}">
+                <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}`}">
+                <span>${data.username}</span>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+    
+    container.querySelectorAll('.dm-user-item').forEach(item => {
+        item.onclick = () => switchDM(item.dataset.uid, item.querySelector('span').innerText);
+    });
+};
+
+const switchDM = (uid, name) => {
+    currentDMRecipientId = uid;
+    currentChannelId = null; // Sunucu kanalını temizle
+    
+    document.querySelectorAll('.dm-user-item').forEach(i => i.classList.remove('active'));
+    document.querySelector(`.dm-user-item[data-uid="${uid}"]`)?.classList.add('active');
+    
+    chatHeaderName.innerText = `@${name}`;
+    listenToDMs(uid);
+};
+
+const listenToDMs = (recipientUid) => {
+    if (unsubscribeMessages) unsubscribeMessages();
+    messageList.innerHTML = '';
+    
+    const myUid = auth.currentUser.uid;
+    const participants = [myUid, recipientUid].sort();
+    const dmId = participants.join('_'); // Benzersiz DM IDsi
+    
+    const q = query(
+        collection(db, 'direct_messages'),
+        where('dmId', '==', dmId),
+        orderBy('createdAt', 'asc'),
+        limit(50)
+    );
+
+    unsubscribeMessages = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+                renderMessage(change.doc.data(), change.doc.id);
+            } else if (change.type === "modified") {
+                updateMessageUI(change.doc.data(), change.doc.id);
+            } else if (change.type === "removed") {
+                removeMessageUI(change.doc.id);
+            }
+        });
+        messageList.scrollTop = messageList.scrollHeight;
+    });
+};
+
 chatInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
-        sendMessage(chatInput.value);
+        if (isDMMode && currentDMRecipientId) {
+            sendDM(chatInput.value);
+        } else {
+            sendMessage(chatInput.value);
+        }
     }
 });
+
+const sendDM = async (text, file = null) => {
+    if (!text && !file) return;
+    const sender = auth.currentUser;
+    const recipientUid = currentDMRecipientId;
+    const participants = [sender.uid, recipientUid].sort();
+    const dmId = participants.join('_');
+
+    let fileURL = null;
+    if (file) fileURL = await uploadFile(file);
+
+    await addDoc(collection(db, 'direct_messages'), {
+        dmId,
+        uid: sender.uid,
+        username: sender.displayName || 'Anonim',
+        userPhoto: sender.photoURL,
+        text,
+        fileURL,
+        createdAt: serverTimestamp()
+    });
+    chatInput.value = '';
+};
 
 export const createServer = async (serverName) => {
     const user = auth.currentUser;
