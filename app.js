@@ -1024,11 +1024,6 @@ export const switchChannel = async (channelId, channelName, type = 'text') => {
         messageInputContainer.classList.remove('hidden');
         voiceArea.classList.add('hidden');
         
-        // Premium Giriş Bildirimi
-        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        if (userDoc.exists() && userDoc.data().isPremium) {
-            showToast(`✨ ${auth.currentUser.displayName || 'Galaktik Yolcu'} Galaksiye Giriş Yaptı!`, "success");
-        }
     }
 };
 
@@ -1758,7 +1753,7 @@ document.addEventListener('click', async (e) => {
             await joinServer(code);
             document.getElementById('join-server-modal').classList.add('hidden');
             inviteInput.value = '';
-            showToast("Yeni bir galaksiye giriş yaptın!", "success");
+
             listenToServers(); // Listeyi yenile
         } catch(err) {
             showToast(err.message, "error");

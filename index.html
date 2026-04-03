@@ -682,9 +682,16 @@
         document.getElementById('close-profile-btn').onclick = () => profileModal.classList.add('hidden');
 
         // --- AUTH STATE UI SYNC ---
+        let hasAnnouncedEntrance = false;
         const handleAuthSuccess = async (user) => {
             document.getElementById('auth-overlay').classList.add('hidden');
             document.getElementById('app-container').classList.remove('hidden');
+            
+            // 📢 BİR KEREYE MAHSUS GİRİŞ ANONSU
+            if (!hasAnnouncedEntrance) {
+                showToast(`✨ ${user.displayName || 'Galaktik Yolcu'} Galaksiye Giriş Yaptı!`, "success");
+                hasAnnouncedEntrance = true;
+            }
             
             // 📸 FIRESTORE'DAN "GERÇEK" PROFİLİ ÇEK
             try {
