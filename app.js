@@ -91,7 +91,7 @@ const switchFriendTab = (tab) => {
 };
 
 document.getElementById('search-tab-btn').onclick = () => switchFriendTab('search');
-document.getElementById('requests-tab-btn').onclick = () => switchFriendTab('search');
+document.getElementById('requests-tab-btn').onclick = () => switchFriendTab('requests');
 
 // Kullanıcı Ara
 let searchTimeout = null;
