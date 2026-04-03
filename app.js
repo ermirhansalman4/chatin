@@ -280,9 +280,17 @@ const renderMessage = (data, id) => {
     }
     
     item.querySelector('.reaction-btn').onclick = (e) => {
+        e.stopPropagation();
+        const rect = e.target.getBoundingClientRect();
         const picker = document.getElementById('emoji-picker');
-        picker.classList.toggle('hidden');
-        // Simple reaction append for demo or specific logic
+        
+        // Picker'ı butonun yanına konumlandır
+        picker.style.top = (rect.top - 200) + 'px';
+        picker.style.left = (rect.left - 220) + 'px';
+        picker.style.bottom = 'auto';
+        picker.style.right = 'auto';
+        picker.classList.remove('hidden');
+        
         window.lastReactionMsgId = id;
     };
 
@@ -369,21 +377,48 @@ if (chatMediaInput) {
     };
 }
 
-// --- EMOJI PICKER IMPROVED ---
-document.querySelectorAll('.emoji-item').forEach(item => {
-    item.onclick = () => {
-        // Eğer bir mesaja tepki verme modundaysak (son tıklanan mesaj ID'si varsa)
-        if (window.lastReactionMsgId) {
-            toggleReaction(window.lastReactionMsgId, item.innerText);
-            window.lastReactionMsgId = null;
-            document.getElementById('emoji-picker').classList.add('hidden');
-        } else {
-            // Normal mesaj kutusuna ekle
-            chatInput.value += item.innerText;
-            chatInput.focus();
-        }
+// --- EMOJI PICKER ADVANCED LOGIC ---
+const emojiBtn = document.getElementById('emoji-btn');
+const emojiPicker = document.getElementById('emoji-picker');
+
+if (emojiBtn) {
+    emojiBtn.onclick = (e) => {
+        e.stopPropagation();
+        window.lastReactionMsgId = null; // Normal mesaj moduna dön
+        emojiPicker.style.bottom = '80px';
+        emojiPicker.style.right = '20px';
+        emojiPicker.style.top = 'auto';
+        emojiPicker.classList.toggle('hidden');
     };
+}
+
+// Global click to close picker
+document.addEventListener('click', (e) => {
+    if (emojiPicker && !emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+        emojiPicker.classList.add('hidden');
+    }
 });
+
+// Update emoji items click
+const setupEmojiItems = () => {
+    document.querySelectorAll('.emoji-item').forEach(item => {
+        item.onclick = (e) => {
+            e.stopPropagation();
+            if (window.lastReactionMsgId) {
+                toggleReaction(window.lastReactionMsgId, item.innerText);
+                window.lastReactionMsgId = null;
+            } else {
+                chatInput.value += item.innerText;
+                chatInput.focus();
+            }
+            emojiPicker.classList.add('hidden');
+        };
+    });
+};
+setupEmojiItems(); // Initial setup
+
+// Update listenToDMs and listenToMessages to call icons/emojis if needed
+// (renderMessage already calls lucide.createIcons)
 
 // --- DM (DIRECT MESSAGES) SYSTEM ---
 let isDMMode = false;
@@ -391,10 +426,12 @@ let currentDMRecipientId = null;
 let unsubscribeDMs = null;
 
 const dmSidebarTrigger = document.getElementById('dm-sidebar-trigger');
-dmSidebarTrigger.onclick = () => {
-    isDMMode = !isDMMode;
-    toggleDMView();
-};
+if (dmSidebarTrigger) {
+    dmSidebarTrigger.onclick = () => {
+        isDMMode = !isDMMode;
+        toggleDMView();
+    };
+}
 
 const toggleDMView = () => {
     const serversList = document.getElementById('server-list');
