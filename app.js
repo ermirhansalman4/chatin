@@ -70,6 +70,14 @@ const initFriendsUI = () => {
     const closeFriendsBtn = document.getElementById('close-friends-btn');
     const searchTabBtn = document.getElementById('search-tab-btn');
     const requestsTabBtn = document.getElementById('requests-tab-btn');
+    const dmSidebarTrigger = document.getElementById('dm-sidebar-trigger');
+
+    if (dmSidebarTrigger) {
+        dmSidebarTrigger.onclick = () => {
+            isDMMode = !isDMMode;
+            toggleDMView();
+        };
+    }
 
     if (addFriendBtn) {
         addFriendBtn.onclick = () => {
@@ -634,53 +642,45 @@ setupEmojiItems(); // Initial setup
 // --- DM (DIRECT MESSAGES) SYSTEM ---
 // (State consolidated at top)
 
-const dmSidebarTrigger = document.getElementById('dm-sidebar-trigger');
-if (dmSidebarTrigger) {
-    dmSidebarTrigger.onclick = () => {
-        isDMMode = !isDMMode;
-        toggleDMView();
-    };
-}
-
 const toggleDMView = () => {
-    const serversList = document.getElementById('server-list');
-    const channelsSidebar = document.getElementById('channels-sidebar');
-    const serverHeader = document.getElementById('server-header');
-    
     if (isDMMode) {
-        dmSidebarTrigger.classList.add('active');
-        // Sunucu listesini değil, kanalları değiştiriyoruz
+        dmSidebarTrigger?.classList.add('active');
         document.getElementById('current-server-name').innerText = "Özel Mesajlar";
-        document.getElementById('channels-container').innerHTML = '<div style="padding:10px; color:var(--text-secondary); font-size:12px;">Yakınlardaki Galaksiler (DM)</div>';
+        document.getElementById('current-channel-name').innerText = "Arkadaş Seç";
+        document.getElementById('messages-container').innerHTML = '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-secondary); opacity:0.6;"><i data-lucide="message-square" style="width:48px; height:48px; margin-bottom:16px;"></i><p>Mesajlaşmak için bir kankanı seç!</p></div>';
         loadDMList();
-        
-        // Sunucu bazlı UI'ları gizle
-        document.getElementById('voice-channels-area').classList.add('hidden');
+        lucide.createIcons();
+        document.getElementById('voice-channels-area')?.classList.add('hidden');
+        document.getElementById('server-members-list-container')?.classList.add('hidden');
     } else {
-        dmSidebarTrigger.classList.remove('active');
-        // Sunucu moduna geri dön
+        dmSidebarTrigger?.classList.remove('active');
+        document.getElementById('voice-channels-area')?.classList.remove('hidden');
+        document.getElementById('server-members-list-container')?.classList.remove('hidden');
+        
         if (currentServerId) {
-            const btn = document.querySelector(`.server-icon[data-id="${currentServerId}"]`);
-            if (btn) btn.click();
+            renderChannels(currentServerId);
+            renderMembers(currentServerId);
+        } else {
+            document.getElementById('channels-container').innerHTML = '<div style="padding:20px; text-align:center; color:gray;">Bir galaksi seç veya arkadaşlarınla konuş!</div>';
         }
     }
 };
 
-const loadDMList = async () => {
+const loadDMList = () => {
     const container = document.getElementById('channels-container');
-    // Basitçe sunucudaki üyeleri veya genel üyeleri göster (Örnek olarak genel üyeler)
-    const q = query(collection(db, 'users'), limit(20));
-    const snap = await getDocs(q);
+    if (!container) return;
     
-    let html = '';
-    snap.forEach(docSnap => {
-        const data = docSnap.data();
-        if (data.uid === auth.currentUser.uid) return;
-        
+    if (myFriends.length === 0) {
+        container.innerHTML = '<div style="padding:24px; text-align:center; color:var(--text-secondary); font-size:13px;">Henüz hiç arkadaşın yok. Arkadaş ekleyerek sohbete başla!</div>';
+        return;
+    }
+    
+    let html = '<div style="padding:10px; color:var(--brand-color); font-size:11px; font-weight:800; letter-spacing:1px;">ARKADAŞLARIN</div>';
+    myFriends.forEach(friend => {
         html += `
-            <div class="dm-user-item ${currentDMRecipientId === data.uid ? 'active' : ''}" data-uid="${data.uid}">
-                <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}`}">
-                <span>${data.username}</span>
+            <div class="dm-user-item ${currentDMRecipientId === friend.uid ? 'active' : ''}" data-uid="${friend.uid}" style="display:flex; align-items:center; gap:10px; padding:10px; margin:4px 8px; border-radius:12px; cursor:pointer; color:var(--text-secondary); transition:0.2s;">
+                <img src="${friend.photoURL || `https://ui-avatars.com/api/?name=${friend.displayName}`}" style="width:32px; height:32px; border-radius:50%; border: 1px solid rgba(255,215,0,0.1);">
+                <span style="font-size:14px; font-weight:600;">${friend.displayName}</span>
             </div>
         `;
     });
@@ -693,12 +693,14 @@ const loadDMList = async () => {
 
 const switchDM = (uid, name) => {
     currentDMRecipientId = uid;
-    currentChannelId = null; // Sunucu kanalını temizle
+    currentChannelId = null; 
     
     document.querySelectorAll('.dm-user-item').forEach(i => i.classList.remove('active'));
     document.querySelector(`.dm-user-item[data-uid="${uid}"]`)?.classList.add('active');
     
-    chatHeaderName.innerText = `@${name}`;
+    document.getElementById('current-channel-name').innerText = `@${name}`;
+    document.getElementById('messages-container').innerHTML = '';
+    
     listenToDMs(uid);
 };
 
