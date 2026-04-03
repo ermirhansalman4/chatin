@@ -35,10 +35,247 @@ import {
     onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
     signOut, updateProfile, sendPasswordResetEmail 
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-// --- STATE MANAGEMENT ---
+// --- GLOBAL STATE ---
 let currentServerId = null; 
 let currentChannelId = null; 
 let currentChannelType = 'text';
+let currentServerOwnerUid = null;
+let unsubscribeMessages = null;
+let unsubscribeServers = null;
+let unsubscribeChannels = null;
+let unsubscribeMembers = null;
+let unsubscribeFriends = null;
+let unsubscribeFriendRequests = null;
+let unsubscribePremiumRequests = null;
+let currentDMRecipientId = null;
+let myFriends = []; 
+let currentVoiceChannelId = null;
+let isDMMode = false;
+let unsubscribeDMs = null;
+
+// --- FRIENDSHIP SYSTEM LOGIC ---
+
+const friendsModal = document.getElementById('friends-modal');
+const userSearchInput = document.getElementById('user-search-input');
+const userSearchResults = document.getElementById('user-search-results');
+const incomingRequestsList = document.getElementById('incoming-requests-list');
+const friendRequestBadge = document.getElementById('friend-request-badge');
+const requestsTabBadge = document.getElementById('requests-tab-badge');
+
+// Arkadaşlık Modalını Aç
+document.getElementById('add-friend-btn').onclick = () => {
+    friendsModal.classList.remove('hidden');
+    switchFriendTab('search');
+};
+
+document.getElementById('close-friends-btn').onclick = () => friendsModal.classList.add('hidden');
+
+// Tab Değiştirme
+const switchFriendTab = (tab) => {
+    const searchBtn = document.getElementById('search-tab-btn');
+    const requestsBtn = document.getElementById('requests-tab-btn');
+    const searchContent = document.getElementById('search-content');
+    const requestsContent = document.getElementById('requests-content');
+
+    if (tab === 'search') {
+        searchBtn.classList.add('active');
+        requestsBtn.classList.remove('active');
+        searchContent.classList.remove('hidden');
+        requestsContent.classList.add('hidden');
+    } else {
+        searchBtn.classList.remove('active');
+        requestsBtn.classList.add('active');
+        searchContent.classList.add('hidden');
+        requestsContent.classList.remove('hidden');
+    }
+};
+
+document.getElementById('search-tab-btn').onclick = () => switchFriendTab('search');
+document.getElementById('requests-tab-btn').onclick = () => switchFriendTab('search');
+
+// Kullanıcı Ara
+let searchTimeout = null;
+userSearchInput.oninput = () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async () => {
+        const queryStr = userSearchInput.value.trim();
+        if (queryStr.length < 3) return;
+
+        const q = query(collection(db, 'users'), where('username', '==', queryStr));
+        const snap = await getDocs(q);
+        renderSearchResults(snap.docs);
+    }, 500);
+};
+
+const renderSearchResults = (docs) => {
+    userSearchResults.innerHTML = '';
+    if (docs.length === 0) {
+        userSearchResults.innerHTML = '<p style="text-align:center; color:gray; margin-top:20px;">Kullanıcı bulunamadı.</p>';
+        return;
+    }
+
+    docs.forEach(d => {
+        const userData = d.data();
+        if (userData.uid === auth.currentUser.uid) return; // Kendini ekleyemezsin
+
+        const div = document.createElement('div');
+        div.className = 'user-row';
+        div.style = 'display:flex; align-items:center; justify-content:space-between; padding:12px; background:rgba(255,255,255,0.03); border-radius:12px;';
+        div.innerHTML = `
+            <div style="display:flex; align-items:center; gap:12px;">
+                <img src="${userData.photoURL}" style="width:32px; height:32px; border-radius:50%;">
+                <span style="font-weight:600;">${userData.username}</span>
+            </div>
+            <button class="add-friend-action-btn" data-uid="${userData.uid}" style="background:var(--brand-color); color:black; border:none; padding:6px 12px; border-radius:8px; font-weight:800; cursor:pointer;">EKLE</button>
+        `;
+        userSearchResults.appendChild(div);
+
+        div.querySelector('.add-friend-action-btn').onclick = () => sendFriendRequest(userData.uid, userData.username);
+    });
+};
+
+// Arkadaşlık İsteği Gönder
+const sendFriendRequest = async (targetUid, targetName) => {
+    try {
+        const myUid = auth.currentUser.uid;
+        
+        // Zaten arkadaş mıyız kontrol et
+        const friendCheck = await getDoc(doc(db, 'users', myUid, 'friends', targetUid));
+        if (friendCheck.exists()) return showToast("Zaten arkadaşsınız!", "error");
+
+        await setDoc(doc(db, 'friend_requests', `${myUid}_${targetUid}`), {
+            fromUid: myUid,
+            fromName: auth.currentUser.displayName || "Kullanıcı",
+            fromPhoto: auth.currentUser.photoURL,
+            toUid: targetUid,
+            status: 'pending',
+            createdAt: serverTimestamp()
+        });
+        showToast(`Arkadaşlık isteği ${targetName} adlı kullanıcıya gönderildi!`);
+    } catch (err) {
+        showToast("İstek gönderilemedi: " + err.message, "error");
+    }
+};
+
+const listenToFriendRequests = () => {
+    if (unsubscribeFriendRequests) unsubscribeFriendRequests();
+    const q = query(collection(db, 'friend_requests'), where('toUid', '==', auth.currentUser.uid), where('status', '==', 'pending'));
+    
+    unsubscribeFriendRequests = onSnapshot(q, (snap) => {
+        incomingRequestsList.innerHTML = '';
+        const count = snap.size;
+        
+        if (count > 0) {
+            friendRequestBadge.innerText = count;
+            friendRequestBadge.classList.remove('hidden');
+            requestsTabBadge.classList.remove('hidden');
+        } else {
+            friendRequestBadge.classList.add('hidden');
+            requestsTabBadge.classList.add('hidden');
+        }
+
+        snap.forEach(d => {
+            const req = d.data();
+            const div = document.createElement('div');
+            div.className = 'user-row';
+            div.style = 'display:flex; align-items:center; justify-content:space-between; padding:12px; background:rgba(255,255,255,0.03); border-radius:12px;';
+            div.innerHTML = `
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <img src="${req.fromPhoto}" style="width:32px; height:32px; border-radius:50%;">
+                    <span style="font-weight:600;">${req.fromName}</span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="accept-req-btn" data-id="${d.id}" style="background:#2ecc71; color:white; border:none; padding:6px 12px; border-radius:8px; cursor:pointer;"><i data-lucide="check"></i></button>
+                    <button class="reject-req-btn" data-id="${d.id}" style="background:#e74c3c; color:white; border:none; padding:6px 12px; border-radius:8px; cursor:pointer;"><i data-lucide="x"></i></button>
+                </div>
+            `;
+            incomingRequestsList.appendChild(div);
+
+            div.querySelector('.accept-req-btn').onclick = () => acceptFriendRequest(d.id, req);
+            div.querySelector('.reject-req-btn').onclick = () => deleteDoc(doc(db, 'friend_requests', d.id));
+        });
+        lucide.createIcons();
+    });
+};
+
+// Arkadaşlık İsteğini Kabul Et
+const acceptFriendRequest = async (requestId, req) => {
+    try {
+        const myUid = auth.currentUser.uid;
+        const friendUid = req.fromUid;
+
+        // Karşılıklı ekle
+        await setDoc(doc(db, 'users', myUid, 'friends', friendUid), {
+            uid: friendUid,
+            username: req.fromName,
+            photoURL: req.fromPhoto,
+            addedAt: serverTimestamp()
+        });
+
+        const myDataDoc = await getDoc(doc(db, 'users', myUid));
+        const myData = myDataDoc.data();
+
+        await setDoc(doc(db, 'users', friendUid, 'friends', myUid), {
+            uid: myUid,
+            username: myData.username || "Kullanıcı",
+            photoURL: myData.photoURL,
+            addedAt: serverTimestamp()
+        });
+
+        await deleteDoc(doc(db, 'friend_requests', requestId));
+        showToast("Artık arkadaşsınız!");
+    } catch (err) {
+        showToast("Hata: " + err.message, "error");
+    }
+};
+
+// Arkadaşları Dinle ve DM Listesini Güncelle
+const listenToFriends = () => {
+    if (unsubscribeFriends) unsubscribeFriends();
+    const q = query(collection(db, 'users', auth.currentUser.uid, 'friends'), orderBy('addedAt', 'desc'));
+    
+    unsubscribeFriends = onSnapshot(q, (snap) => {
+        myFriends = snap.docs.map(d => d.data());
+        if (currentServerId === null) renderDirectMessages(); // Eğer Home sayfasındaysak DM listesini yenile
+    });
+};
+
+// DM Listesini Render Et (Yalnızca Arkadaşlar)
+const renderDirectMessages = () => {
+    channelList.innerHTML = `
+        <div style="padding: 10px; color: var(--text-secondary); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
+            Özel Mesajlar (Arkadaşlar)
+        </div>
+    `;
+    
+    if (myFriends.length === 0) {
+        channelList.innerHTML += `
+            <div style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 12px;">
+                Henüz arkadaşın yok. Arkadaş ekleyerek sohbete başla!
+            </div>
+        `;
+        return;
+    }
+
+    myFriends.forEach(friend => {
+        const div = document.createElement('div');
+        div.className = `dm-user-item ${currentDMRecipientId === friend.uid ? 'active' : ''}`;
+        div.dataset.uid = friend.uid;
+        div.style = 'display:flex; align-items:center; gap:10px; padding:10px; margin:2px 0; border-radius:8px; cursor:pointer; transition:0.2s;';
+        div.innerHTML = `
+            <img src="${friend.photoURL}" style="width:32px; height:32px; border-radius:50%; border: 2px solid rgba(255,215,0,0.2);">
+            <div style="display:flex; flex-direction:column;">
+                <span style="font-weight:600; font-size:14px;">${friend.username}</span>
+                <span style="font-size:10px; color:var(--text-secondary);">DM başlatmak için tıkla</span>
+            </div>
+        `;
+        div.onclick = () => switchDM(friend.uid, friend.username);
+        channelList.appendChild(div);
+    });
+};
+
+// --- STATE MANAGEMENT ---
+// (State consolidated at top)
 
 // Sayfa yüklendiğinde Davet Kodunu Yakala
 const inviteFromUrl = window.location.pathname.split('/invite/')[1];
@@ -55,13 +292,8 @@ if (paymentUserId) {
     window.history.replaceState({}, document.title, "/");
 }
 
-let currentServerOwnerUid = null;
-let unsubscribeMessages = null;
-let unsubscribeServers = null;
-let unsubscribeChannels = null;
-let unsubscribeMembers = null;
-let currentVoiceChannelId = null;
-
+// (State consolidated at top)
+// --- UI GLOBALS ---
 const messageList = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const chatHeaderName = document.getElementById('current-channel-name');
@@ -313,7 +545,23 @@ export const toggleReaction = async (msgId, emoji) => {
     await updateDoc(msgRef, { reactions });
 };
 
-// --- EVENT LISTENERS ---
+// --- USER SYNC TO FIRESTORE ---
+const syncUserToFirestore = async (user) => {
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    const userData = {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName || "Kullanıcı",
+        username: (user.displayName || user.email.split('@')[0]).toLowerCase().replace(/\s+/g, '_'),
+        photoURL: user.photoURL || 'https://via.placeholder.com/150',
+        lastLogin: serverTimestamp()
+    };
+    await setDoc(userRef, userData, { merge: true });
+    console.log("User synced to Firestore:", userData.username);
+};
+
+// --- AUTHENTICATION LISTENERS ---
 
 
 
@@ -361,9 +609,7 @@ setupEmojiItems(); // Initial setup
 // (renderMessage already calls lucide.createIcons)
 
 // --- DM (DIRECT MESSAGES) SYSTEM ---
-let isDMMode = false;
-let currentDMRecipientId = null;
-let unsubscribeDMs = null;
+// (State consolidated at top)
 
 const dmSidebarTrigger = document.getElementById('dm-sidebar-trigger');
 if (dmSidebarTrigger) {
@@ -1336,6 +1582,12 @@ const renderMemberItem = async (data, serverId, ownerUid) => {
 auth.onAuthStateChanged(async (user) => {
     if (user) {
         console.log("Logged In:", user.displayName);
+        listenToServers();
+        listenToFriends();
+        listenToFriendRequests();
+        
+        // Kullanıcıyı Firestore'a senkronize et
+        await syncUserToFirestore(user);
         
         // ADMIN KONTROLÜ (SADECE SİZİN İÇİN)
         const ADMIN_UID = 'JU4pSd1VslcS6zJoaImsKjESzhl2';
@@ -1548,20 +1800,20 @@ document.getElementById('buy-premium-btn').onclick = async () => {
 };
 
 // --- ADMIN PANELİ (KOMUTA MERKEZİ) MANTIĞI ---
-let unsubscribeRequests = null;
+// (Consolidated premium requests listener)
 
 document.getElementById('admin-launcher-btn').onclick = () => {
     document.getElementById('admin-panel-modal').classList.remove('hidden');
-    loadPremiumRequests();
+    listenToPremiumRequests();
 };
 
-const loadPremiumRequests = () => {
+const listenToPremiumRequests = () => {
     const list = document.getElementById('admin-request-list');
     list.innerHTML = '<div style="display: flex; justify-content: center; padding: 40px;"><i class="lucide-refresh-cw spin" style="color: gold; width: 40px; height: 40px;"></i></div>';
 
-    if (unsubscribeRequests) unsubscribeRequests();
+    if (unsubscribePremiumRequests) unsubscribePremiumRequests();
 
-    unsubscribeRequests = onSnapshot(collection(db, 'premium_requests'), (snapshot) => {
+    unsubscribePremiumRequests = onSnapshot(collection(db, 'premium_requests'), (snapshot) => {
         list.innerHTML = '';
         if (snapshot.empty) {
             list.innerHTML = '<p style="color: var(--text-secondary); text-align: center; margin-top: 20px;">Henüz bekleyen talep yok.</p>';
