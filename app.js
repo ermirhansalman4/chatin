@@ -1264,29 +1264,41 @@ const loadPremiumRequests = () => {
             card.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 15px;">
                     <div style="width: 45px; height: 45px; background: gold; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: black; font-weight: 900; font-size: 20px;">
-                        ${req.username.charAt(0).toUpperCase()}
+                        ${req.username ? req.username.charAt(0).toUpperCase() : '?'}
                     </div>
                     <div>
-                        <p style="color: white; font-weight: 800; font-size: 16px; margin: 0;">${req.username}</p>
-                        <p style="color: grey; font-size: 11px; margin: 2px 0;">ID: ${req.uid}</p>
+                        <p style="color: white; font-weight: 800; font-size: 16px; margin: 0;">${req.username || 'Bilinmeyen Üye'}</p>
+                        <p style="color: grey; font-size: 11px; margin: 2px 0;">ID: ${docSnap.id}</p>
                         <p style="color: gold; font-size: 10px; font-weight: 700; opacity: 0.8;">📅 TALEP TARİHİ: ${date}</p>
                     </div>
                 </div>
-                <button class="auth-btn" style="width: auto; background: gold; color: black; padding: 10px 20px; font-size: 12px; font-weight: 900; border-radius: 10px; box-shadow: 0 4px 15px rgba(255,215,0,0.2);" id="approve-${req.uid}">
-                    ONAYLA
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="auth-btn" style="width: auto; background: gold; color: black; padding: 10px 15px; font-size: 11px; font-weight: 900; border-radius: 10px;" id="approve-${docSnap.id}">
+                        ONAYLA
+                    </button>
+                    <button class="auth-btn" style="width: auto; background: rgba(255,0,0,0.2); color: #ff4d4d; border: 1px solid rgba(255,0,0,0.3); padding: 10px 15px; font-size: 11px; font-weight: 900; border-radius: 10px;" id="reject-${docSnap.id}">
+                        REDDET
+                    </button>
+                </div>
             `;
             list.appendChild(card);
 
-            document.getElementById(`approve-${req.uid}`).onclick = async () => {
+            document.getElementById(`approve-${docSnap.id}`).onclick = async () => {
                 try {
-                    // Kullanıcıyı premium yap
-                    await updateDoc(doc(db, 'users', req.uid), { isPremium: true });
-                    // Talebi sil
-                    await deleteDoc(doc(db, 'premium_requests', req.uid));
-                    showToast(`${req.username} kullanıcısı artık bir galaktik premium! 🚀`, "success");
+                    await updateDoc(doc(db, 'users', docSnap.id), { isPremium: true });
+                    await deleteDoc(doc(db, 'premium_requests', docSnap.id));
+                    showToast(`${req.username} artık Premium! 🚀`, "success");
                 } catch(err) {
-                    showToast("Hata: " + err.message, "error");
+                    showToast("Onay hatası: " + err.message, "error");
+                }
+            };
+
+            document.getElementById(`reject-${docSnap.id}`).onclick = async () => {
+                try {
+                    await deleteDoc(doc(db, 'premium_requests', docSnap.id));
+                    showToast("Talep reddedildi.", "info");
+                } catch(err) {
+                    showToast("Red hatası: " + err.message, "error");
                 }
             };
         });
@@ -1536,26 +1548,63 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-// PROFİL KAYDETME (GIF KONTROLÜ İLE)
+// --- DOSYA YÜKLEME YARDIMCISI ---
+const uploadProfileFile = async (file, path) => {
+    if (!file) return null;
+    const storageRef = ref(storage, path);
+    await uploadBytesResumable(storageRef, file);
+    return await getDownloadURL(storageRef);
+};
+
+// PROFİL KAYDETME (DOSYA YÜKLEME DESTEĞİ İLE)
 document.getElementById('save-profile-btn').onclick = async () => {
     const user = auth.currentUser;
-    const newName = document.getElementById('edit-profile-name-input').value.trim();
-    const newPfp = document.getElementById('edit-profile-pfp-input').value.trim();
-    const newBanner = document.getElementById('edit-profile-banner-input').value.trim();
-    const newEffect = document.getElementById('edit-profile-effect-input').value;
-    const newBio = document.getElementById('edit-profile-bio-input').value.trim();
+    if (!user) return;
 
-    if (!newName) return showToast("Kullanıcı adı boş olamaz!", "error");
-
-    // PREMIUM KONTROLÜ
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    const isPremium = userDoc.exists() && userDoc.data().isPremium;
-
-    if (!isPremium && (newPfp.toLowerCase().endsWith('.gif') || newBanner || newEffect !== 'none')) {
-        return showToast("Kapak fotoğrafı ve mesaj efektleri sadece Chatin Premium üyeleri içindir! 🚀", "error");
-    }
+    const btn = document.getElementById('save-profile-btn');
+    const originalText = btn.innerText;
+    btn.innerText = "YÜKLENİYOR...";
+    btn.disabled = true;
 
     try {
+        const newName = document.getElementById('edit-profile-name-input').value.trim();
+        const pfpFile = document.getElementById('pfp-file-input').files[0];
+        const bannerFile = document.getElementById('banner-file-input').files[0];
+        
+        let newPfp = document.getElementById('edit-profile-pfp-input').value.trim();
+        let newBanner = document.getElementById('edit-profile-banner-input').value.trim();
+        const newEffect = document.getElementById('edit-profile-effect-input').value;
+        const newBio = document.getElementById('edit-profile-bio-input').value.trim();
+
+        if (!newName) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+            return showToast("Kullanıcı adı boş olamaz!", "error");
+        }
+
+        // --- PREMIUM KONTROLÜ ---
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const isPremium = userDoc.exists() && userDoc.data().isPremium;
+
+        // Dosya yüklemeleri
+        if (pfpFile) {
+            newPfp = await uploadProfileFile(pfpFile, `pfps/${user.uid}_${Date.now()}`);
+        }
+        if (bannerFile) {
+            if (!isPremium) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+                return showToast("Kapak fotoğrafı sadece Chatin Premium üyeleri içindir! 🚀", "error");
+            }
+            newBanner = await uploadProfileFile(bannerFile, `banners/${user.uid}_${Date.now()}`);
+        }
+
+        if (!isPremium && (newPfp.toLowerCase().endsWith('.gif') || (newBanner && !userDoc.data().bannerURL) || newEffect !== 'none')) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+            return showToast("Banner ve mesaj efektleri sadece Premium üyeler içindir! 🚀", "error");
+        }
+
         await updateDoc(doc(db, 'users', user.uid), {
             username: newName,
             photoURL: newPfp,
@@ -1563,15 +1612,30 @@ document.getElementById('save-profile-btn').onclick = async () => {
             messageEffect: newEffect,
             bio: newBio
         });
-        showToast("Profilin güncellendi!", "success");
-        document.getElementById('profile-modal-overlay').classList.add('hidden');
-    } catch(err) {
-        showToast("Profil güncelleme hatası: " + err.message, "error");
+
+        showToast("Profilin galakside güncellendi! ✨", "success");
+        document.getElementById('profile-edit-mode').classList.add('hidden');
+        document.getElementById('profile-modal').classList.add('hidden');
+        
+        // UI'ı hemen güncelle
+        if (window.loadUserProfile) window.loadUserProfile(user.uid);
+        
+    } catch (err) {
+        console.error(err);
+        showToast("Profil güncellenirken hata oluştu!", "error");
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
     }
 };
 
-// EKSTRA LISTENER TEMIZLIGI - MUKERRERLERI KALDIRDIK 
-// (Tüm işlevler yukarıdaki ana event listener ve onclick yapılarında toplandı)
+// Dosya seçilince input box'ta ismini göster (OPSİYONEL)
+document.getElementById('pfp-file-input').onchange = (e) => {
+    if (e.target.files[0]) document.getElementById('edit-profile-pfp-input').value = e.target.files[0].name;
+};
+document.getElementById('banner-file-input').onchange = (e) => {
+    if (e.target.files[0]) document.getElementById('edit-profile-banner-input').value = e.target.files[0].name;
+};
 // --- PREMIUM KARŞILAMA MODAL BUTONLARI ---
 document.getElementById('request-premium-welcome-btn').onclick = async () => {
     const user = auth.currentUser;

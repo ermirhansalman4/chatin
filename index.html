@@ -315,13 +315,21 @@
             <div id="profile-edit-mode" class="hidden">
                 <h2 style="color: var(--brand-color); margin-bottom: 24px;">Profili Güncelle</h2>
                 <div style="display: flex; flex-direction: column; gap: 16px; text-align: left;">
-                    <div>
-                        <label style="font-size: 11px; color: var(--text-secondary); margin-left: 4px;">PROFİL FOTOĞRAFI (URL)</label>
-                        <input type="text" id="edit-profile-pfp-input" placeholder="https://..." style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--border-gold); padding: 12px; border-radius: 10px; color: white; outline: none; margin-top: 4px;">
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 11px; color: var(--text-secondary); margin-left: 4px;">PROFİL FOTOĞRAFI</label>
+                            <input type="text" id="edit-profile-pfp-input" placeholder="URL veya dosya seçin" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--border-gold); padding: 12px; border-radius: 10px; color: white; outline: none; margin-top: 4px;">
+                        </div>
+                        <input type="file" id="pfp-file-input" class="hidden" accept="image/*">
+                        <button class="auth-btn" style="width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; padding: 0;" onclick="document.getElementById('pfp-file-input').click()"><i data-lucide="upload" style="width: 18px;"></i></button>
                     </div>
-                    <div>
-                        <label style="font-size: 11px; color: var(--text-secondary); margin-left: 4px;">KAPAK FOTOĞRAFI (URL) - PREMIUM</label>
-                        <input type="text" id="edit-profile-banner-input" placeholder="Kapak Resmi URL" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--border-gold); padding: 12px; border-radius: 10px; color: white; outline: none; margin-top: 4px;">
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 11px; color: var(--text-secondary); margin-left: 4px;">KAPAK FOTOĞRAFI - PREMIUM</label>
+                            <input type="text" id="edit-profile-banner-input" placeholder="URL veya dosya seçin" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--border-gold); padding: 12px; border-radius: 10px; color: white; outline: none; margin-top: 4px;">
+                        </div>
+                        <input type="file" id="banner-file-input" class="hidden" accept="image/*">
+                        <button class="auth-btn" style="width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; padding: 0;" onclick="document.getElementById('banner-file-input').click()"><i data-lucide="upload" style="width: 18px;"></i></button>
                     </div>
                     <div>
                         <label style="font-size: 11px; color: var(--text-secondary); margin-left: 4px;">MESAJ EFEKTİ - PREMIUM</label>
