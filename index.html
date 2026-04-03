@@ -682,14 +682,45 @@
         document.getElementById('close-profile-btn').onclick = () => profileModal.classList.add('hidden');
 
         // --- AUTH STATE UI SYNC ---
-        window.addEventListener('auth-success', (e) => {
+        const handleAuthSuccess = async (user) => {
             document.getElementById('auth-overlay').classList.add('hidden');
             document.getElementById('app-container').classList.remove('hidden');
             
-            // Kullanıcı bilgilerini güncelle
-            const user = e.detail;
-            document.getElementById('current-user-name').innerText = user.displayName || user.email.split('@')[0];
-            document.getElementById('current-user-avatar').src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=random`;
+            // 📸 FIRESTORE'DAN "GERÇEK" PROFİLİ ÇEK
+            try {
+                const { db } = await import('./firebase.config.js');
+                const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                
+                if (userDoc.exists()) {
+                    const data = userDoc.data();
+                    document.getElementById('current-user-name').innerText = data.username || user.displayName;
+                    document.getElementById('current-user-avatar').src = data.photoURL || user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=random`;
+                    
+                    // Profil modalını da güncelle
+                    document.getElementById('edit-profile-name-input').value = data.username || "";
+                    document.getElementById('edit-profile-bio-input').value = data.bio || "";
+                    document.getElementById('edit-profile-pfp-input').value = data.photoURL || "";
+                } else {
+                    document.getElementById('current-user-name').innerText = user.displayName;
+                    document.getElementById('current-user-avatar').src = user.photoURL;
+                }
+            } catch (err) {
+                console.error("Firestore profil yükleme hatası:", err);
+            }
+        };
+
+        window.addEventListener('auth-success', (e) => handleAuthSuccess(e.detail));
+
+        // SAYFA YÜKLENDİĞİNDE OTURUM VAR MI KONTROL ET
+        import('./firebase.config.js').then(({ auth }) => {
+            const check = setInterval(() => {
+                if (auth.currentUser) {
+                    handleAuthSuccess(auth.currentUser);
+                    clearInterval(check);
+                }
+            }, 500);
+            setTimeout(() => clearInterval(check), 5000); // Max 5 sn dene
         });
 
         window.addEventListener('auth-logout', () => {
