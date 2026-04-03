@@ -53,13 +53,19 @@ let currentVoiceChannelId = null;
 let isDMMode = false;
 let unsubscribeDMs = null;
 
+// FRIENDSHIP UI ELEMENTS (GLOBAL)
+let friendsModal, userSearchInput, userSearchResults, incomingRequestsList, friendRequestBadge, requestsTabBadge;
+
 // --- FRIENDSHIP SYSTEM UI & LOGIC ---
 
 const initFriendsUI = () => {
-    const friendsModal = document.getElementById('friends-modal');
-    const userSearchInput = document.getElementById('user-search-input');
-    const userSearchResults = document.getElementById('user-search-results');
-    const incomingRequestsList = document.getElementById('incoming-requests-list');
+    friendsModal = document.getElementById('friends-modal');
+    userSearchInput = document.getElementById('user-search-input');
+    userSearchResults = document.getElementById('user-search-results');
+    incomingRequestsList = document.getElementById('incoming-requests-list');
+    friendRequestBadge = document.getElementById('friend-request-badge');
+    requestsTabBadge = document.getElementById('requests-tab-badge');
+    
     const addFriendBtn = document.getElementById('add-friend-btn');
     const closeFriendsBtn = document.getElementById('close-friends-btn');
     const searchTabBtn = document.getElementById('search-tab-btn');
@@ -73,7 +79,6 @@ const initFriendsUI = () => {
     }
 
     if (closeFriendsBtn) closeFriendsBtn.onclick = () => friendsModal?.classList.add('hidden');
-
     if (searchTabBtn) searchTabBtn.onclick = () => switchFriendTab('search');
     if (requestsTabBtn) requestsTabBtn.onclick = () => switchFriendTab('requests');
 
@@ -82,9 +87,11 @@ const initFriendsUI = () => {
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(async () => {
                 const queryStr = userSearchInput.value.trim();
-                if (queryStr.length < 3) return;
-
-                const q = query(collection(db, 'users'), where('username', '==', queryStr));
+                if (queryStr.length < 3) {
+                    userSearchResults.innerHTML = '';
+                    return;
+                }
+                const q = query(collection(db, 'users'), where('username', '==', queryStr.toLowerCase()));
                 const snap = await getDocs(q);
                 renderSearchResults(snap.docs);
             }, 500);
@@ -119,7 +126,6 @@ const switchFriendTab = (tab) => {
 let searchTimeout = null;
 
 const renderSearchResults = (docs) => {
-    const userSearchResults = document.getElementById('user-search-results');
     if (!userSearchResults) return;
     
     userSearchResults.innerHTML = '';
