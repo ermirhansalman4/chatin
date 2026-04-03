@@ -289,14 +289,15 @@ const renderDirectMessages = () => {
     }
 
     myFriends.forEach(friend => {
+        const displayName = friend.username || friend.displayName || "Gizemli Arkadaş";
         const div = document.createElement('div');
         div.className = `dm-user-item ${currentDMRecipientId === friend.uid ? 'active' : ''}`;
         div.dataset.uid = friend.uid;
         div.style = 'display:flex; align-items:center; gap:10px; padding:10px; margin:2px 0; border-radius:8px; cursor:pointer; transition:0.2s;';
         div.innerHTML = `
-            <img src="${friend.photoURL}" style="width:32px; height:32px; border-radius:50%; border: 2px solid rgba(255,215,0,0.2);">
+            <img src="${friend.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}`}" style="width:32px; height:32px; border-radius:50%; border: 2px solid rgba(255,215,0,0.2);">
             <div style="display:flex; flex-direction:column;">
-                <span style="font-weight:600; font-size:14px;">${friend.username}</span>
+                <span style="font-weight:600; font-size:14px;">${displayName}</span>
                 <span style="font-size:10px; color:var(--text-secondary);">DM başlatmak için tıkla</span>
             </div>
         `;
@@ -680,10 +681,11 @@ const loadDMList = () => {
     
     let html = '<div style="padding:10px; color:var(--brand-color); font-size:11px; font-weight:800; letter-spacing:1px;">ARKADAŞLARIN</div>';
     myFriends.forEach(friend => {
+        const displayName = friend.username || friend.displayName || 'Gizemli Arkadaş';
         html += `
             <div class="dm-user-item ${currentDMRecipientId === friend.uid ? 'active' : ''}" data-uid="${friend.uid}" style="display:flex; align-items:center; gap:10px; padding:10px; margin:4px 8px; border-radius:12px; cursor:pointer; color:var(--text-secondary); transition:0.2s;">
-                <img src="${friend.photoURL || `https://ui-avatars.com/api/?name=${friend.displayName}`}" style="width:32px; height:32px; border-radius:50%; border: 1px solid rgba(255,215,0,0.1);">
-                <span style="font-size:14px; font-weight:600;">${friend.displayName}</span>
+                <img src="${friend.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}`}" style="width:32px; height:32px; border-radius:50%; border: 1px solid rgba(255,215,0,0.1);">
+                <span style="font-size:14px; font-weight:600;">${displayName}</span>
             </div>
         `;
     });
