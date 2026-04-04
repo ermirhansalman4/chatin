@@ -826,9 +826,8 @@
                 if (!file) return;
 
                 try {
-                    const { db, auth, storage } = await import('./firebase.config.js');
+                    const { db, auth } = await import('./firebase.config.js');
                     const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
-                    const { ref, uploadBytesResumable, getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js');
                     
                     let isPremium = false;
                     if (auth.currentUser) {
@@ -836,34 +835,22 @@
                         isPremium = userDoc.exists() && userDoc.data().isPremium;
                     }
 
-                    const maxSize = isPremium ? 5 * 1024 * 1024 : 700 * 1024;
+                    // Storage olmadığı için limitleri Firestore Base64 bellek sınırlarına (%33 şişer) uydurduk:
+                    // 1MB Firestore kapasitesi -> Max 700 KB (Premium)
+                    const maxSize = isPremium ? 700 * 1024 : 150 * 1024;
                     if (file.size > maxSize) {
-                        return showToast(isPremium ? "Dosya çok büyük! (Max 5MB)" : "Dosya çok büyük! Premium'a geçerek 5MB'a (Örn. GIF) kadar yükleyebilirsiniz.", "error");
+                        return showToast(isPremium ? "Dosya boyutu yüksek! (Max 700KB)" : "Boyut çok büyük (Max 150KB). Kaliteli GIF'ler için (700KB) Premium'a geç!", "error");
                     }
 
-                    showToast("Dosya yükleniyor, lütfen bekleyin...", "info");
-
-                    const fileExt = file.name.split('.').pop();
-                    const fileRef = ref(storage, `profiles/${auth.currentUser.uid}_${Date.now()}.${fileExt}`);
-                    const uploadTask = uploadBytesResumable(fileRef, file);
-
-                    uploadTask.on('state_changed', 
-                        () => {}, 
-                        (error) => { showToast("Yükleme hatası: " + error.message, "error"); }, 
-                        async () => {
-                            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                            document.getElementById(displayId).value = downloadURL;
-                            showToast("Görsel hazır! Kaydet butonuna basmayı unutma.", "success");
-                        }
-                    );
-                } catch (err) {
-                    console.error("Storage yükleme hatası:", err);
-                    showToast("Bir hata oluştu, yerel okunuyor...");
                     const reader = new FileReader();
                     reader.onload = (event) => {
                         document.getElementById(displayId).value = event.target.result;
+                        showToast("Görsel hazır! Kaydet butonuna basmayı unutma.", "success");
                     };
                     reader.readAsDataURL(file);
+                } catch (err) {
+                    console.error("Dosya okuma hatası:", err);
+                    showToast("Dosya okunamadı.", "error");
                 }
             };
         };
