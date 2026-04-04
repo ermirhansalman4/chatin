@@ -1,12 +1,12 @@
 import { db, auth, storage } from './firebase.config.js';
-import { 
-    collection, 
-    addDoc, 
+import {
+    collection,
+    addDoc,
     getDocs,
-    query, 
-    where, 
-    orderBy, 
-    onSnapshot, 
+    query,
+    where,
+    orderBy,
+    onSnapshot,
     serverTimestamp,
     limit,
     doc,
@@ -19,26 +19,27 @@ import {
     collectionGroup
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-import { 
-    ref as rtdbRef, 
-    onValue as onRtdbValue 
+import {
+    ref as rtdbRef,
+    onValue as onRtdbValue
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 import { joinVoiceChannel, leaveVoiceChannel, startScreenShare, stopScreenShare, toggleLocalMic } from './voice.js';
 import { rtdb } from './firebase.config.js';
 
-import { 
-    ref, 
-    uploadBytesResumable, 
-    getDownloadURL 
+import {
+    ref,
+    uploadBytesResumable,
+    getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
-import { 
-    onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
-    signOut, updateProfile, sendPasswordResetEmail 
+import {
+    onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    signOut, updateProfile, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 // --- GLOBAL STATE ---
-let currentServerId = null; 
-let currentChannelId = null; 
+let currentServerId = null;
+let currentServerName = null;
+let currentChannelId = null;
 let currentChannelType = 'text';
 let currentServerOwnerUid = null;
 let unsubscribeMessages = null;
@@ -49,7 +50,7 @@ let unsubscribeFriends = null;
 let unsubscribeFriendRequests = null;
 let unsubscribePremiumRequests = null;
 let currentDMRecipientId = null;
-let myFriends = []; 
+let myFriends = [];
 let currentVoiceChannelId = null;
 let isDMMode = false;
 let unsubscribeDMs = null;
@@ -66,7 +67,7 @@ const initFriendsUI = () => {
     incomingRequestsList = document.getElementById('incoming-requests-list');
     friendRequestBadge = document.getElementById('friend-request-badge');
     requestsTabBadge = document.getElementById('requests-tab-badge');
-    
+
     const addFriendBtn = document.getElementById('add-friend-btn');
     const closeFriendsBtn = document.getElementById('close-friends-btn');
     const searchTabBtn = document.getElementById('search-tab-btn');
@@ -136,7 +137,7 @@ let searchTimeout = null;
 
 const renderSearchResults = (docs) => {
     if (!userSearchResults) return;
-    
+
     userSearchResults.innerHTML = '';
     if (docs.length === 0) {
         userSearchResults.innerHTML = '<p style="text-align:center; color:gray; margin-top:20px;">Kullanıcı bulunamadı.</p>';
@@ -170,7 +171,7 @@ const renderSearchResults = (docs) => {
 const sendFriendRequest = async (targetUid, targetName) => {
     try {
         const myUid = auth.currentUser.uid;
-        
+
         // Zaten arkadaş mıyız kontrol et
         const friendCheck = await getDoc(doc(db, 'users', myUid, 'friends', targetUid));
         if (friendCheck.exists()) return showToast("Zaten arkadaşsınız!", "error");
@@ -192,11 +193,11 @@ const sendFriendRequest = async (targetUid, targetName) => {
 const listenToFriendRequests = () => {
     if (unsubscribeFriendRequests) unsubscribeFriendRequests();
     const q = query(collection(db, 'friend_requests'), where('toUid', '==', auth.currentUser.uid), where('status', '==', 'pending'));
-    
+
     unsubscribeFriendRequests = onSnapshot(q, (snap) => {
         incomingRequestsList.innerHTML = '';
         const count = snap.size;
-        
+
         if (count > 0) {
             friendRequestBadge.innerText = count;
             friendRequestBadge.classList.remove('hidden');
@@ -265,7 +266,7 @@ const acceptFriendRequest = async (requestId, req) => {
 const listenToFriends = () => {
     if (unsubscribeFriends) unsubscribeFriends();
     const q = query(collection(db, 'users', auth.currentUser.uid, 'friends'), orderBy('addedAt', 'desc'));
-    
+
     unsubscribeFriends = onSnapshot(q, (snap) => {
         myFriends = snap.docs.map(d => d.data());
         if (currentServerId === null) renderDirectMessages(); // Eğer Home sayfasındaysak DM listesini yenile
@@ -279,7 +280,7 @@ const renderDirectMessages = () => {
             Özel Mesajlar (Arkadaşlar)
         </div>
     `;
-    
+
     if (myFriends.length === 0) {
         channelList.innerHTML += `
             <div style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 12px;">
@@ -356,14 +357,14 @@ window.customConfirm = (title, msg) => {
         document.getElementById('confirm-msg').innerText = msg;
         modal.classList.remove('hidden');
         lucide.createIcons(); // Galaktik ikonları yükle
-        
+
         const cleanup = (res) => {
             modal.classList.add('hidden');
             document.getElementById('confirm-yes-btn').onclick = null;
             document.getElementById('confirm-no-btn').onclick = null;
             resolve(res);
         };
-        
+
         document.getElementById('confirm-yes-btn').onclick = () => cleanup(true);
         document.getElementById('confirm-no-btn').onclick = () => cleanup(false);
     });
@@ -378,14 +379,14 @@ window.customPrompt = (title, defaultVal = '') => {
         modal.classList.remove('hidden');
         input.focus();
         lucide.createIcons(); // Galaktik ikonları yükle
-        
+
         const cleanup = (res) => {
             modal.classList.add('hidden');
             document.getElementById('prompt-ok-btn').onclick = null;
             document.getElementById('prompt-cancel-btn').onclick = null;
             resolve(res);
         };
-        
+
         document.getElementById('prompt-ok-btn').onclick = () => cleanup(input.value);
         document.getElementById('prompt-cancel-btn').onclick = () => cleanup(null);
     });
@@ -438,9 +439,9 @@ export const listenToMessages = (channelId) => {
  * Mesajı UI'da render et
  */
 const renderMessage = (data, id) => {
-    const time = data.createdAt?.toDate() ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Az önce';
+    const time = data.createdAt?.toDate() ? data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Az önce';
     const isMe = data.uid === auth.currentUser?.uid;
-    
+
     // TEPKİLERİ HESAPLA
     let reactionHtml = '';
     if (data.reactions) {
@@ -488,9 +489,9 @@ const renderMessage = (data, id) => {
         </div>
     `;
     messageList.insertAdjacentHTML('beforeend', msgHtml);
-    
+
     const item = messageList.lastElementChild;
-    const profileOpen = () => window.openUserProfile({username: data.username, photoURL: data.userPhoto, uid: data.uid});
+    const profileOpen = () => window.openUserProfile({ username: data.username, photoURL: data.userPhoto, uid: data.uid });
     item.querySelector('.msg-avatar').addEventListener('click', profileOpen);
     item.querySelector('.msg-username').addEventListener('click', profileOpen);
 
@@ -499,19 +500,19 @@ const renderMessage = (data, id) => {
         item.querySelector('.delete-msg-btn').onclick = () => deleteMessage(id);
         item.querySelector('.edit-btn').onclick = () => startEditMessage(id, data.text);
     }
-    
+
     item.querySelector('.reaction-btn').onclick = (e) => {
         e.stopPropagation();
         const rect = e.target.getBoundingClientRect();
         const picker = document.getElementById('emoji-picker');
-        
+
         // Picker'ı butonun yanına konumlandır
         picker.style.top = (rect.top - 200) + 'px';
         picker.style.left = (rect.left - 220) + 'px';
         picker.style.bottom = 'auto';
         picker.style.right = 'auto';
         picker.classList.remove('hidden');
-        
+
         window.lastReactionMsgId = id;
     };
 
@@ -528,10 +529,10 @@ const updateMessageUI = (data, id) => {
     if (oldMsg) {
         const scrollPos = messageList.scrollTop;
         const isAtBottom = (messageList.scrollHeight - messageList.scrollTop) <= (messageList.clientHeight + 50);
-        
+
         oldMsg.remove();
         renderMessage(data, id);
-        
+
         // Pozisyonu koru veya aşağı kaydır
         if (!isAtBottom) messageList.scrollTop = scrollPos;
     }
@@ -571,9 +572,9 @@ export const toggleReaction = async (msgId, emoji) => {
 
     const data = msgSnap.data();
     let reactions = data.reactions || {};
-    
+
     if (!reactions[emoji]) reactions[emoji] = [];
-    
+
     if (reactions[emoji].includes(uid)) {
         reactions[emoji] = reactions[emoji].filter(u => u !== uid);
     } else {
@@ -666,7 +667,7 @@ const toggleDMView = () => {
         if (activeServerNameElem) activeServerNameElem.innerText = currentServerName || "Sunucu Seçin";
         document.getElementById('voice-channels-area')?.classList.remove('hidden');
         document.getElementById('member-list-container')?.classList.remove('hidden');
-        
+
         if (currentServerId) {
             listenToChannels(currentServerId);
             // Members will be handled by listenToChannels or should be refreshed
@@ -679,12 +680,12 @@ const toggleDMView = () => {
 const loadDMList = () => {
     const container = document.getElementById('channel-list');
     if (!container) return;
-    
+
     if (myFriends.length === 0) {
         container.innerHTML = '<div style="padding:24px; text-align:center; color:var(--text-secondary); font-size:13px;">Henüz hiç arkadaşın yok. Arkadaş ekleyerek sohbete başla!</div>';
         return;
     }
-    
+
     let html = '<div style="padding:10px; color:var(--brand-color); font-size:11px; font-weight:800; letter-spacing:1px;">ARKADAŞLARIN</div>';
     myFriends.forEach(friend => {
         const displayName = friend.username || friend.displayName || 'Gizemli Arkadaş';
@@ -696,7 +697,7 @@ const loadDMList = () => {
         `;
     });
     container.innerHTML = html;
-    
+
     container.querySelectorAll('.dm-user-item').forEach(item => {
         item.onclick = () => switchDM(item.dataset.uid, item.querySelector('span').innerText);
     });
@@ -704,14 +705,14 @@ const loadDMList = () => {
 
 const switchDM = (uid, name) => {
     currentDMRecipientId = uid;
-    currentChannelId = null; 
-    
+    currentChannelId = null;
+
     document.querySelectorAll('.dm-user-item').forEach(i => i.classList.remove('active'));
     document.querySelector(`.dm-user-item[data-uid="${uid}"]`)?.classList.add('active');
-    
+
     document.getElementById('current-channel-name').innerText = `@${name}`;
     document.getElementById('chat-messages').innerHTML = '';
-    
+
     listenToDMs(uid);
 };
 
@@ -719,11 +720,11 @@ const listenToDMs = (recipientUid) => {
     if (unsubscribeMessages) unsubscribeMessages();
     const container = document.getElementById('chat-messages');
     if (container) container.innerHTML = '';
-    
+
     const myUid = auth.currentUser.uid;
     const participants = [myUid, recipientUid].sort();
     const dmId = participants.join('_');
-    
+
     const q = query(
         collection(db, 'direct_messages', dmId, 'messages'),
         orderBy('timestamp', 'asc'),
@@ -775,13 +776,16 @@ const initGlobalDMListener = () => {
                 const msg = change.doc.data();
                 // Eer u an sohbet ettiimiz kii deilse BİLDİRİM VER
                 if (msg.uid !== currentDMRecipientId) {
-                    notificationSound.play().catch(e => {});
+                    notificationSound.play().catch(e => { });
                     showToast(`Yeni Mesaj: ${msg.username}`, "info");
                 }
             }
         });
     }, (error) => {
-        console.error("Global DM Radar Hata:", error);
+        console.error("Global DM Radar Hatas (Index Hatas olabilir):", error);
+        if (error.code === 'failed-precondition') {
+            console.warn("DİKKAT: messages koleksiyon grubu için 'Collection Group' kapsamlı bir index gereklidir.");
+        }
     });
 };
 
@@ -880,14 +884,14 @@ export const sendDM = async (content, isFile = false) => {
 
 export const createServer = async (serverName) => {
     const user = auth.currentUser;
-    
+
     // PREMIUM KONTROLÜ (Limit: 5)
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     const isPremium = userDoc.exists() && userDoc.data().isPremium;
-    
+
     const q = query(collection(db, 'servers'), where('ownerUid', '==', user.uid));
     const serverCount = (await getDocs(q)).size;
-    
+
     if (serverCount >= 5 && !isPremium) {
         await customConfirm("Limit Aşıldı", "Maksimum 5 sunucu sınırına ulaştınız. Daha fazla sunucu oluşturmak için Chatin Premium'a geçmelisiniz.");
         return null;
@@ -925,15 +929,15 @@ export const createServer = async (serverName) => {
 export const joinServer = async (code) => {
     const user = auth.currentUser;
     await customConfirm("Seni Bekliyorlar!", `Bu galaksinin davetini kabul edip içeri giriyoruz... (Kod: ${code})`);
-    
+
     // Sunucuyu bul
     const q = query(collection(db, 'servers'), where('inviteCode', '==', code));
     const snap = await getDocs(q);
     if (snap.empty) throw new Error("Üzgünüz, bu galaksi haritadan silinmiş veya davet kodu geçersiz.");
-    
+
     const serverDoc = snap.docs[0];
     const serverId = serverDoc.id;
-    
+
     // Sunucu ana dökümanına üye olarak ekle
     await updateDoc(doc(db, 'servers', serverId), {
         members: arrayUnion(user.uid)
@@ -946,7 +950,7 @@ export const joinServer = async (code) => {
         photoURL: user.photoURL,
         joinedAt: Date.now()
     });
-    
+
     return serverId;
 };
 
@@ -958,8 +962,8 @@ export const deleteServer = async (serverId) => {
     try {
         await deleteDoc(doc(db, 'servers', serverId));
         showToast("Sunucu başarıyla imha edildi.", "info");
-        window.location.reload(); 
-    } catch(err) {
+        window.location.reload();
+    } catch (err) {
         showToast("Silme hatası: " + err.message, "error");
     }
 };
@@ -971,7 +975,7 @@ export const listenToServers = () => {
     if (unsubscribeServers) unsubscribeServers();
 
     const q = query(collection(db, 'servers'), where('members', 'array-contains', user.uid));
-    
+
     unsubscribeServers = onSnapshot(q, (snapshot) => {
         serverListContainer.innerHTML = '';
         snapshot.docs.forEach((doc, index) => {
@@ -985,7 +989,12 @@ export const listenToServers = () => {
 };
 
 export const switchServer = async (serverId, serverData) => {
+    if (isDMMode) {
+        isDMMode = false;
+        toggleDMView();
+    }
     currentServerId = serverId;
+    currentServerName = serverData.name;
     window.lastActiveServerId = serverId;
     activeServerName.innerText = serverData.name;
 
@@ -997,17 +1006,17 @@ export const switchServer = async (serverId, serverData) => {
             });
             serverData.ownerUid = auth.currentUser.uid;
             console.log('✅ ownerUid otomatik eklendi:', auth.currentUser.uid);
-        } catch(e) {
+        } catch (e) {
             console.warn('ownerUid eklenemedi:', e);
         }
     }
 
     // Owner UID'ini state'e kaydet
     currentServerOwnerUid = serverData.ownerUid || null;
-    
+
     // Reset Settings UI
     document.getElementById('server-settings-modal').classList.add('hidden');
-    
+
     // PATRON / YETKİ KONTROLÜ (Sidebar '+' butonları için)
     const canAddChannels = await checkPermission('manage_channels');
     document.querySelectorAll('.add-chan-plus').forEach(btn => {
@@ -1033,11 +1042,11 @@ export const switchServer = async (serverId, serverData) => {
 
     listenToChannels(serverId);
     listenToMembers(serverId, serverData.ownerUid);
-    
+
     // Refresh Icons for active state
     document.querySelectorAll('.server-icon').forEach(icon => {
         icon.classList.remove('active');
-        if(icon.dataset.id === serverId) icon.classList.add('active');
+        if (icon.dataset.id === serverId) icon.classList.add('active');
     });
 };
 
@@ -1045,19 +1054,19 @@ export const switchServer = async (serverId, serverData) => {
 
 export const checkPermission = async (perm) => {
     if (!currentServerId || !auth.currentUser) return false;
-    
+
     // 1. Sunucu Sahibi her şeyi yapabilir
     const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
     if (!serverSnap.exists()) return false;
     if (serverSnap.data().ownerUid === auth.currentUser.uid) return true;
-    
+
     // 2. Üyenin rollerini al
     const memberSnap = await getDoc(doc(db, 'servers', currentServerId, 'members', auth.currentUser.uid));
     if (!memberSnap.exists()) return false;
-    
+
     const roleIds = memberSnap.data().roles || [];
     if (roleIds.length === 0) return false;
-    
+
     // 3. Rollerdeki yetkileri kontrol et
     for (const rid of roleIds) {
         const roleSnap = await getDoc(doc(db, 'servers', currentServerId, 'roles', rid));
@@ -1065,7 +1074,7 @@ export const checkPermission = async (perm) => {
             return true;
         }
     }
-    
+
     return false;
 };
 
@@ -1105,7 +1114,7 @@ const loadRoles = async () => {
     const snap = await getDocs(rolesRef);
     const roleList = document.getElementById('role-list');
     roleList.innerHTML = '';
-    
+
     snap.forEach(docSnap => {
         const role = docSnap.data();
         const html = `
@@ -1121,7 +1130,7 @@ const loadRoles = async () => {
             </div>
         `;
         roleList.insertAdjacentHTML('beforeend', html);
-        
+
         const item = roleList.lastElementChild;
         item.querySelector('.edit-role-perms').onclick = (e) => { e.stopPropagation(); openRoleEditor(docSnap.id, role); };
         item.querySelector('.delete-role-btn').onclick = (e) => { e.stopPropagation(); deleteRole(docSnap.id); };
@@ -1134,7 +1143,7 @@ const loadMembersInSettings = async () => {
     const membersRef = collection(db, 'servers', currentServerId, 'members');
     const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
     const rolesList = [];
-    rolesSnap.forEach(r => rolesList.push({id: r.id, ...r.data()}));
+    rolesSnap.forEach(r => rolesList.push({ id: r.id, ...r.data() }));
 
     const snap = await getDocs(membersRef);
     const list = document.getElementById('settings-members-list');
@@ -1143,7 +1152,7 @@ const loadMembersInSettings = async () => {
     snap.forEach(docSnap => {
         const data = docSnap.data();
         const isSelf = data.uid === auth.currentUser.uid;
-        
+
         let rolesHtml = '<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;">';
         rolesList.forEach(role => {
             const hasRole = (data.roles || []).includes(role.id);
@@ -1157,7 +1166,7 @@ const loadMembersInSettings = async () => {
                     <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" style="width: 36px; height: 36px; border-radius: 50%;">
                     <div style="flex: 1;">
                         <span style="font-weight: 700; font-size: 14px;">${data.username}</span>
-                        <div style="font-size: 10px; color: var(--text-secondary);">Üye ID: ${data.uid.substring(0,8)}...</div>
+                        <div style="font-size: 10px; color: var(--text-secondary);">Üye ID: ${data.uid.substring(0, 8)}...</div>
                     </div>
                     <button class="kick-btn-settings" data-uid="${data.uid}" style="background: transparent; border: 1px solid var(--error-color); color: var(--error-color); padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 800; ${isSelf ? 'display:none' : ''}">SUNUCUDAN AT</button>
                 </div>
@@ -1174,7 +1183,7 @@ const loadMembersInSettings = async () => {
             const rid = pill.dataset.rid;
             const memberSnap = await getDoc(doc(db, 'servers', currentServerId, 'members', uid));
             if (!memberSnap.exists()) return;
-            
+
             let userRoles = memberSnap.data().roles || [];
             if (userRoles.includes(rid)) {
                 userRoles = userRoles.filter(id => id !== rid);
@@ -1190,10 +1199,10 @@ const loadMembersInSettings = async () => {
 const loadRoleChannelsUI = async (containerId, selectedChannels = []) => {
     const container = document.getElementById(containerId);
     if (!container || !currentServerId) return;
-    
+
     const snap = await getDocs(query(collection(db, 'channels'), where('serverId', '==', currentServerId)));
     container.innerHTML = '';
-    
+
     snap.forEach(docSnap => {
         const chan = docSnap.data();
         const isChecked = selectedChannels.includes(docSnap.id);
@@ -1210,7 +1219,7 @@ const openRoleEditor = (roleId, roleData) => {
     const editor = document.getElementById('role-editor');
     editor.classList.remove('hidden');
     document.getElementById('editing-role-name').innerText = `"${roleData.name}" Yetkileri & Erişimi`;
-    
+
     // Check checkboxes based on current permissions
     const perms = roleData.permissions || [];
     editor.querySelectorAll('input[data-perm]').forEach(cb => {
@@ -1219,7 +1228,7 @@ const openRoleEditor = (roleId, roleData) => {
 
     // Load channel access
     loadRoleChannelsUI('edit-role-channels', roleData.accessibleChannels || []);
-    
+
     window.editingRoleId = roleId;
     window.editingRoleData = roleData;
     editor.scrollIntoView({ behavior: 'smooth' });
@@ -1228,12 +1237,12 @@ const openRoleEditor = (roleId, roleData) => {
 const listenToChannels = (serverId) => {
     if (unsubscribeChannels) unsubscribeChannels();
     const q = query(collection(db, 'channels'), where('serverId', '==', serverId));
-    
+
     unsubscribeChannels = onSnapshot(q, async (snapshot) => {
         // --- BU KISIM ÖNEMLİ: KULLANICI ROLÜNE GÖRE FİLTRELEME ---
         const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
         const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === auth.currentUser.uid;
-        
+
         let allowedChannelIds = [];
         if (!isOwner) {
             const memberRef = doc(db, 'servers', currentServerId, 'members', auth.currentUser.uid);
@@ -1257,7 +1266,7 @@ const listenToChannels = (serverId) => {
             // Eğer sahip değilsek ve bu kanal bizim kanal listemizde yoksa GÖSTERME (Erişim kısıtlıysa)
             // Not: Eğer sunucuda hiç rol yoksa veya rolün içine kanal eklenmemişse görünürlük durumunu sunucu sahibine bırakıyoruz
             const canSee = isOwner || allowedChannelIds.includes(doc.id);
-            
+
             if (canSee) {
                 renderChannelItem(data, doc.id);
                 // Auto switch to first text channel if not set
@@ -1294,18 +1303,18 @@ export const updateChannelName = async (channelId, newName) => {
 export const kickMember = async (uid) => {
     if (!currentServerId) return;
     if (!(await checkPermission('kick_members'))) return showToast("Bu işlem için yetkiniz yok!", "error");
-    
+
     const confirmed = await customConfirm("Üyeyi At", "Bu üyeyi sunucudan atmak istediğinizden emin misiniz?");
     if (!confirmed) return;
-    
+
     // 1. Sunucu ana listesinden sil
     await updateDoc(doc(db, 'servers', currentServerId), {
         members: arrayRemove(uid)
     });
-    
+
     // 2. Özel üye listesinden (subcollection) sil
     await deleteDoc(doc(db, 'servers', currentServerId, 'members', uid));
-    
+
     showToast("Üye başarıyla atıldı.", "info");
 };
 
@@ -1331,30 +1340,30 @@ export const switchChannel = async (channelId, channelName, type = 'text') => {
     if (type === 'voice') {
         currentVoiceChannelId = channelId;
         await joinVoiceChannel(channelId);
-        
+
         chatHeaderName.innerText = `🔊 ${channelName}`;
-        
+
         // UI Toggle
         messageList.classList.add('hidden');
         messageInputContainer.classList.add('hidden');
         voiceArea.classList.remove('hidden');
-        
+
         listenToVoiceParticipants(channelId);
     } else {
         chatHeaderName.innerText = channelName;
-        
+
         // UI Toggle
         messageList.classList.remove('hidden');
         messageInputContainer.classList.remove('hidden');
         voiceArea.classList.add('hidden');
-        
+
     }
 };
 
 let unsubscribeVoiceMembers = null;
 const listenToVoiceParticipants = (channelId) => {
     if (unsubscribeVoiceMembers) unsubscribeVoiceMembers();
-    
+
     const membersRef = collection(db, 'channels', channelId, 'voice_members');
     unsubscribeVoiceMembers = onSnapshot(membersRef, (snapshot) => {
         voiceGrid.innerHTML = '';
@@ -1375,7 +1384,7 @@ const renderVoiceParticipant = (data) => {
         </div>
     `;
     voiceGrid.insertAdjacentHTML('beforeend', html);
-    
+
     // Güvenli Tıklama Dinleyicisi
     voiceGrid.lastElementChild.addEventListener('click', () => {
         window.openUserProfile(data);
@@ -1433,7 +1442,7 @@ window.openUserProfile = async (data) => {
     if (userDoc.exists()) {
         const userData = userDoc.data();
         const isPremium = userData.isPremium;
-        
+
         // Premium Rozeti (🚀)
         const badgeSpot = document.getElementById('premium-badge-spot');
         badgeSpot.innerHTML = isPremium ? '<i data-lucide="zap" style="color: gold; width: 22px; filter: drop-shadow(0 0 5px gold);"></i>' : '';
@@ -1446,7 +1455,7 @@ window.openUserProfile = async (data) => {
             badgesList.innerHTML += '<div class="role-pill" style="border-color: #8a2be2; color: #8a2be2; font-size: 9px; padding: 2px 6px;">KURUCU</div>';
         }
         badgesList.innerHTML += '<div class="role-pill" style="border-color: #00ced1; color: #00ced1; font-size: 9px; padding: 2px 6px;">GÖNÜLLÜ TESTER</div>';
-        
+
         lucide.createIcons();
     }
 
@@ -1464,23 +1473,23 @@ window.openUserProfile = async (data) => {
     if (isOwner) {
         try {
             const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
-            
+
             const rolePanel = document.createElement('div');
             rolePanel.id = 'profile-role-panel';
             rolePanel.style.cssText = 'margin-top: 20px; text-align: left; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;';
-            
+
             let roleHtml = '<label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 8px;">ROLLERİ YÖNET</label><div style="display: flex; flex-wrap: wrap; gap: 8px;">';
-            
+
             rolesSnap.forEach(rDoc => {
                 const role = rDoc.data();
                 const hasRole = (data.roles || []).includes(rDoc.id);
                 roleHtml += `<div class="role-pill" data-id="${rDoc.id}" style="padding: 4px 10px; border-radius: 20px; border: 1px solid ${role.color}; font-size: 12px; cursor: pointer; color: ${hasRole ? 'white' : role.color}; background: ${hasRole ? role.color : 'transparent'}; transition: 0.2s;">${role.name}</div>`;
             });
-            
+
             if (rolesSnap.empty) {
                 roleHtml += '<span style="font-size: 12px; color: var(--text-secondary);">Henüz rol oluşturulmamış. Sunucu Ayarları → Roller</span>';
             }
-            
+
             roleHtml += '</div>';
             rolePanel.innerHTML = roleHtml;
 
@@ -1516,10 +1525,10 @@ window.openUserProfile = async (data) => {
 
 const listenToMembers = (serverId, ownerUid) => {
     if (unsubscribeMembers) unsubscribeMembers();
-    
+
     // SADECE BU SUNUCUNUN ÜYELERİNİ DİNLE
     const membersRef = collection(db, 'servers', serverId, 'members');
-    
+
     unsubscribeMembers = onSnapshot(membersRef, (snapshot) => {
         memberListContainer.innerHTML = '';
         snapshot.docs.forEach(docSnap => {
@@ -1549,14 +1558,14 @@ const renderServerIcon = (data, id) => {
         </div>
     `;
     serverListContainer.insertAdjacentHTML('beforeend', iconHtml);
-    
+
     serverListContainer.lastElementChild.addEventListener('click', () => switchServer(id, data));
 };
 
 const renderChannelItem = async (data, id) => {
     const icon = data.type === 'voice' ? 'volume-2' : 'hash';
     const activeStyle = currentChannelId === id ? 'background-color: var(--bg-hover); color: white;' : '';
-    
+
     // Check if user is owner to show management icons
     const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
     const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === auth.currentUser.uid;
@@ -1573,13 +1582,13 @@ const renderChannelItem = async (data, id) => {
             ` : ''}
         </div>
     `;
-    
+
     if (data.type === 'voice') {
         voiceChannelsContainer.insertAdjacentHTML('beforeend', html);
     } else {
         textChannelsContainer.insertAdjacentHTML('beforeend', html);
     }
-    
+
     const item = data.type === 'voice' ? voiceChannelsContainer.lastElementChild : textChannelsContainer.lastElementChild;
     item.addEventListener('click', (e) => {
         if (!e.target.closest('.channel-actions')) switchChannel(id, data.name, data.type);
@@ -1645,7 +1654,7 @@ const renderMemberItem = async (data, serverId, ownerUid) => {
     `;
     memberListContainer.insertAdjacentHTML('beforeend', html);
     lucide.createIcons();
-    
+
     const item = memberListContainer.lastElementChild;
     item.addEventListener('click', (e) => {
         if (e.target.closest('.kick-btn')) {
@@ -1663,11 +1672,11 @@ auth.onAuthStateChanged(async (user) => {
         listenToServers();
         listenToFriends();
         listenToFriendRequests();
-        
+
         // Kullanıcıyı Firestore'a senkronize et
         await syncUserToFirestore(user);
         initGlobalDMListener();
-        
+
         // ADMIN KONTROLÜ (SADECE SİZİN İÇİN)
         const ADMIN_UID = 'JU4pSd1VslcS6zJoaImsKjESzhl2';
         const adminBtn = document.getElementById('admin-launcher-btn');
@@ -1693,11 +1702,11 @@ auth.onAuthStateChanged(async (user) => {
             try {
                 await joinServer(pendingInvite);
                 showToast(`Başarıyla katıldın!`, "success");
-            } catch(err) {
+            } catch (err) {
                 showToast(err.message, "error");
             }
         }
-        
+
         listenToServers();
     } else {
         console.log("Logged Out");
@@ -1731,29 +1740,33 @@ document.getElementById('server-header-btn').onclick = async () => {
     const canManage = await checkPermission('manage_server');
     if (canManage) {
         document.getElementById('server-settings-modal').classList.remove('hidden');
-        loadRoles(); 
+        loadRoles();
         loadRoleChannelsUI('new-role-channels'); // AYARLAR AÇILDIĞINDA KANALLARI DA YÜKLE
-        
+
         // Sunucu Verilerini Yükle (Premium & Davet Kodu)
         const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
         if (serverSnap.exists()) {
             const serverData = serverSnap.data();
             document.getElementById('custom-invite-input').value = serverData.inviteCode || '';
-            
+
             // Sahibi Premium mu kontrol et
             const ownerSnap = await getDoc(doc(db, 'users', serverData.ownerUid));
             const isPremium = ownerSnap.exists() && ownerSnap.data().isPremium;
-            
+
             const statusIndicator = document.getElementById('premium-status-indicator');
+            const statusText = document.getElementById('p-status-text');
+            const buyBtn = document.getElementById('buy-premium-btn');
             const themeArea = document.getElementById('theme-selector-area');
-            
+
             if (isPremium) {
                 statusIndicator.style.background = 'rgba(255, 215, 0, 0.1)';
-                statusIndicator.innerHTML = '<p style="font-weight: 800; color: gold;">BU SUNUCU PREMIUM AYRICALIKLARINA SAHİP! 💎</p>';
+                if (statusText) statusText.innerHTML = '<span style="font-weight: 800; color: gold;">BU SUNUCU PREMIUM AYRICALIKLARINA SAHİP! 💎</span>';
+                if (buyBtn) buyBtn.classList.add('hidden');
                 themeArea.classList.remove('hidden');
             } else {
                 statusIndicator.style.background = 'rgba(255, 255, 255, 0.05)';
-                statusIndicator.innerHTML = '<p style="color: var(--text-secondary);">BU SUNUCU STANDART SÜRÜMDE. ÖZEL KOD VE TEMALAR İÇİN PREMIUM GEREKLİ.</p>';
+                if (statusText) statusText.innerHTML = '<span style="color: var(--text-secondary);">BU SUNUCU STANDART SÜRÜMDE. ÖZEL KOD VE TEMALAR İÇİN PREMIUM GEREKLİ.</span>';
+                if (buyBtn) buyBtn.classList.remove('hidden');
                 themeArea.classList.add('hidden');
             }
         }
@@ -1791,7 +1804,7 @@ document.getElementById('add-role-btn-final').onclick = async () => {
 // --- ROL YETKİ VE ERİŞİM KAYDETME ---
 document.getElementById('save-role-perms-btn').onclick = async () => {
     if (!window.editingRoleId) return;
-    
+
     const perms = Array.from(document.querySelectorAll('#role-editor input[data-perm]:checked')).map(cb => cb.dataset.perm);
     const accessibleChannels = Array.from(document.querySelectorAll('#edit-role-channels input:checked')).map(cb => cb.value);
 
@@ -1840,29 +1853,29 @@ const loadPremiumStatus = async () => {
     if (!user) return;
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     const isPremium = userDoc.exists() && userDoc.data().isPremium;
-    
+
     const indicator = document.getElementById('premium-status-indicator');
     const statusText = document.getElementById('p-status-text');
     const buyBtn = document.getElementById('buy-premium-btn');
     const themeArea = document.getElementById('theme-selector-area');
 
     if (isPremium) {
-        indicator.style.background = 'rgba(255, 215, 0, 0.2)';
-        statusText.innerText = "TEBRİKLER, PREMIUM ÜYESİNİZ! 🚀";
-        buyBtn.classList.add('hidden');
-        themeArea.classList.remove('hidden');
+        if (indicator) indicator.style.background = 'rgba(255, 215, 0, 0.2)';
+        if (statusText) statusText.innerText = "TEBRİKLER, PREMIUM ÜYESİNİZ! 🚀";
+        if (buyBtn) buyBtn.classList.add('hidden');
+        if (themeArea) themeArea.classList.remove('hidden');
     } else {
-        indicator.style.background = 'rgba(255, 215, 0, 0.05)';
-        statusText.innerText = "PREMIUM DEĞİLSİNİZ";
-        buyBtn.classList.remove('hidden');
-        themeArea.classList.add('hidden');
+        if (indicator) indicator.style.background = 'rgba(255, 215, 0, 0.05)';
+        if (statusText) statusText.innerText = "PREMIUM DEĞİLSİNİZ";
+        if (buyBtn) buyBtn.classList.remove('hidden');
+        if (themeArea) themeArea.classList.add('hidden');
     }
 };
 
 document.getElementById('buy-premium-btn').onclick = async () => {
     const user = auth.currentUser;
     if (!user) return;
-    
+
     const confirmed = await customConfirm("Premium Talebi", "Şu anda ödeme altyapımız bakımda olduğundan talebiniz manuel olarak incelenecektir. Yöneticiye Premium talebi göndermek istiyor musunuz?");
     if (confirmed) {
         try {
@@ -1873,7 +1886,7 @@ document.getElementById('buy-premium-btn').onclick = async () => {
                 createdAt: serverTimestamp()
             });
             showToast("Talebin galaktik komuta merkezine iletildi. Onaylanınca haberin olacak!", "success");
-        } catch(err) {
+        } catch (err) {
             showToast("Talebin iletilemedi: " + err.message, "error");
         }
     }
@@ -1952,7 +1965,7 @@ const listenToPremiumRequests = () => {
                     await updateDoc(doc(db, 'users', docSnap.id), { isPremium: true });
                     await deleteDoc(doc(db, 'premium_requests', docSnap.id));
                     showToast(`${req.username} artık Premium! 🚀`, "success");
-                } catch(err) {
+                } catch (err) {
                     showToast("Onay hatası: " + err.message, "error");
                 }
             };
@@ -1961,7 +1974,7 @@ const listenToPremiumRequests = () => {
                 try {
                     await deleteDoc(doc(db, 'premium_requests', docSnap.id));
                     showToast("Talep reddedildi.", "info");
-                } catch(err) {
+                } catch (err) {
                     showToast("Red hatası: " + err.message, "error");
                 }
             };
@@ -1996,7 +2009,7 @@ document.getElementById('save-custom-invite').onclick = async () => {
     try {
         const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
         if (!serverSnap.exists()) return;
-        
+
         const ownerUid = serverSnap.data().ownerUid;
         const ownerSnap = await getDoc(doc(db, 'users', ownerUid));
         const isPremium = ownerSnap.exists() && ownerSnap.data().isPremium;
@@ -2008,7 +2021,7 @@ document.getElementById('save-custom-invite').onclick = async () => {
         // Çakışma kontrolü
         const q = query(collection(db, 'servers'), where('inviteCode', '==', newCode));
         const snap = await getDocs(q);
-        
+
         // Kendi kodumuzsa sorun yok, başkasınındaysa hata ver
         const isAlreadyTakenByOthers = snap.docs.some(d => d.id !== currentServerId);
         if (isAlreadyTakenByOthers) {
@@ -2050,8 +2063,8 @@ document.addEventListener('mousedown', (e) => {
     const isOverlay = e.target.id.endsWith('-modal'); // Arka plana tıklandıysa (IDsı -modal ile bitenler)
 
     if (isCancelBtn || isCloseIcon || isOverlay) {
-         const modals = document.querySelectorAll('[id$="-modal"]');
-         modals.forEach(m => m.classList.add('hidden'));
+        const modals = document.querySelectorAll('[id$="-modal"]');
+        modals.forEach(m => m.classList.add('hidden'));
     }
 });
 
@@ -2060,15 +2073,15 @@ document.addEventListener('click', async (e) => {
     if (e.target.closest('#create-server-final-btn')) {
         const nameInput = document.getElementById('server-name-input');
         const name = nameInput.value.trim();
-        if(!name) return showToast("Sunucu adı boş olamaz!", "error");
-        
+        if (!name) return showToast("Sunucu adı boş olamaz!", "error");
+
         try {
             await createServer(name);
             document.getElementById('create-server-modal').classList.add('hidden');
             nameInput.value = '';
             showToast("Güneş Sistemi'nde yeni bir sunucu doğdu!", "success");
             listenToServers(); // Listeyi yenile
-        } catch(err) {
+        } catch (err) {
             showToast(err.message, "error");
         }
     }
@@ -2079,15 +2092,15 @@ document.addEventListener('click', async (e) => {
     if (e.target.closest('#join-server-final-btn')) {
         const inviteInput = document.getElementById('join-invite-input');
         const code = inviteInput.value.trim();
-        if(!code) return showToast("Davet kodu girmelisin!", "error");
-        
+        if (!code) return showToast("Davet kodu girmelisin!", "error");
+
         try {
             await joinServer(code);
             document.getElementById('join-server-modal').classList.add('hidden');
             inviteInput.value = '';
 
             listenToServers(); // Listeyi yenile
-        } catch(err) {
+        } catch (err) {
             showToast(err.message, "error");
         }
     }
@@ -2153,14 +2166,14 @@ document.addEventListener('click', async (e) => {
     if (logoutTrigger) {
         const { logout } = await import('./auth.js');
         const confirmed = await customConfirm("Oturumu Kapat", "Galaksiden ayrılmak istediğinize emin misiniz?");
-        if(confirmed) {
-            await logout(); 
+        if (confirmed) {
+            await logout();
             window.location.reload();
         }
     }
 
     // --- SES KANALI AKSİYONLARI ---
-    
+
     // Ses Kanalı Mikrofonu
     const voiceMic = e.target.closest('#voice-mic-active');
     if (voiceMic) {
@@ -2176,7 +2189,7 @@ document.addEventListener('click', async (e) => {
     if (voiceScreen) {
         voiceScreen.classList.toggle('sharing');
         const isSharing = voiceScreen.classList.contains('sharing');
-        
+
         if (isSharing) {
             startScreenShare().then(success => {
                 if (!success) {
@@ -2266,7 +2279,7 @@ window.openUserSettings = (tab = 'account') => {
     if (!user) return;
 
     document.getElementById('user-settings-modal').classList.remove('hidden');
-    
+
     // Verileri yükle
     document.getElementById('settings-pfp-preview').src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'Üye'}`;
     document.getElementById('settings-name-display').innerText = user.displayName || 'İsimsiz Üye';
@@ -2285,7 +2298,7 @@ window.openUserSettings = (tab = 'account') => {
                 <p style="color: var(--text-secondary); margin-bottom: 15px;">Galaktik Chatin ayrıcalıklarının tadını çıkarıyorsun! 🚀</p>
             `;
         } else {
-             premBox.innerHTML = `
+            premBox.innerHTML = `
                 <i data-lucide="shield-alert" style="width: 60px; height: 60px; color: grey; margin-bottom: 20px; opacity: 0.5;"></i>
                 <h3 style="color: white; font-size: 20px;">Henüz Premium Değilsiniz</h3>
                 <p style="color: var(--text-secondary); margin-bottom: 25px;">Galaktik bannerlar, özel mesaj efektleri ve daha fazlası için Premium'a geçin.</p>
