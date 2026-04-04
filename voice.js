@@ -9,7 +9,8 @@ import {
     setDoc,
     deleteDoc,
     query,
-    where
+    where,
+    serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const servers = {
@@ -202,6 +203,7 @@ const createPeerConnection = (targetUid) => {
             }
             audio.srcObject = remoteStream;
             audio.autoplay = true;
+            audio.play().catch(e => console.warn("Audio play failed:", e));
         } 
         
         if (event.track.kind === 'video') {
@@ -214,6 +216,7 @@ const createPeerConnection = (targetUid) => {
                 video.playsInline = true;
                 video.srcObject = remoteStream;
                 display.appendChild(video);
+                video.play().catch(e => console.warn("Video play failed:", e));
             }
         }
     };

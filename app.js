@@ -2265,7 +2265,8 @@ document.addEventListener('click', async (e) => {
         [mainMic, sideMic].forEach(btn => {
             if (btn) {
                 btn.classList.toggle('off', isMicMuted);
-                btn.querySelector('i')?.setAttribute('data-lucide', isMicMuted ? 'mic-off' : 'mic');
+                const icon = btn.querySelector('i, svg');
+                if (icon) icon.setAttribute('data-lucide', isMicMuted ? 'mic-off' : 'mic');
                 btn.title = isMicMuted ? "Sesi Aç" : "Sesi Kapat";
             }
         });
@@ -2280,7 +2281,7 @@ document.addEventListener('click', async (e) => {
         document.querySelectorAll('audio').forEach(audio => {
             if (audio.id.startsWith('audio-')) audio.muted = isDeafened;
         });
-        const icon = deafenBtn.querySelector('i');
+        const icon = deafenBtn.querySelector('i, svg');
         if (icon) icon.setAttribute('data-lucide', isDeafened ? 'headphones-off' : 'headphones');
         deafenBtn.classList.toggle('off', isDeafened);
         deafenBtn.title = isDeafened ? "Sesi Aç" : "Sağırlaştır";
