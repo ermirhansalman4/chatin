@@ -2350,39 +2350,6 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-    // Ses Kanalı Ayarları Modalı Aç
-    const voiceSets = e.target.closest('#voice-settings-active');
-    if (voiceSets) {
-        document.getElementById('voice-settings-modal').classList.remove('hidden');
-        lucide.createIcons();
-    }
-
-    // Ses Kanalı Ayarları Kapat (X veya Kaydet)
-    if (e.target.closest('#close-voice-settings') || e.target.closest('#save-voice-settings')) {
-        document.getElementById('voice-settings-modal').classList.add('hidden');
-        if (e.target.closest('#save-voice-settings')) {
-            showToast("Ses ayarları başarıyla kaydedildi!", "success");
-        }
-    }
-    // MOBİL MENÜ KONTROLLERİ
-    const sidebarToggle = e.target.closest('#mobile-sidebar-toggle');
-    if (sidebarToggle) {
-        document.body.classList.toggle('show-sidebar');
-        document.body.classList.remove('show-members');
-    }
-
-    const membersToggle = e.target.closest('#mobile-members-toggle');
-    if (membersToggle) {
-        document.body.classList.toggle('show-members');
-        document.body.classList.remove('show-sidebar');
-    }
-
-    // Ekranın herhangi bir yerine tıklandığında menüleri kapat (Chat alanı tıklandığında)
-    if (e.target.closest('#chat-messages') || e.target.closest('#chat-input')) {
-        document.body.classList.remove('show-sidebar');
-        document.body.classList.remove('show-members');
-    }
-});
 
 
 // --- PREMIUM KARŞILAMA MODAL BUTONLARI ---
