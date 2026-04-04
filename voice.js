@@ -129,24 +129,46 @@ const initiateCall = async (channelId, targetUid) => {
 
     // RENEGOTIATION (Ekran paylaşımı açılıp kapandığında burası tetiklenir)
     pc.onnegotiationneeded = async () => {
-        console.log("Renegotiation needed for:", targetUid);
-        const newOffer = await pc.createOffer();
-        await pc.setLocalDescription(newOffer);
-        await updateDoc(offerDoc, {
-            sdp: newOffer.sdp,
-            type: newOffer.type,
-            createdAt: Date.now()
-        });
+        if (pc.isSignaling || pc.signalingState !== 'stable') return;
+        try {
+            pc.isSignaling = true;
+            console.log("Renegotiation needed for:", targetUid);
+            const newOffer = await pc.createOffer();
+            await pc.setLocalDescription(newOffer);
+            await updateDoc(offerDoc, {
+                sdp: newOffer.sdp,
+                type: newOffer.type,
+                createdAt: serverTimestamp()
+            });
+        } catch (e) {
+            console.error("Renegotiation error:", e);
+        } finally {
+            pc.isSignaling = false;
+        }
     };
 
-    onSnapshot(offerDoc, (snapshot) => {
+    onSnapshot(offerDoc, async (snapshot) => {
+        if (pc.isSignaling) return;
         const data = snapshot.data();
         if (data?.answer && pc.signalingState === 'have-local-offer') {
-            pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            try {
+                pc.isSignaling = true;
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            } catch (e) {
+                console.error("Error setting remote description from answer:", e);
+            } finally {
+                pc.isSignaling = false;
+            }
         }
     });
 
     const answerCandidates = collection(offerDoc, 'answerCandidates');
+    pc.onsignalingstatechange = () => {
+        if (pc.signalingState === 'stable') {
+            pc.isSignaling = false;
+        }
+    };
+
     onSnapshot(answerCandidates, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === 'added' && pc.remoteDescription) {
@@ -169,17 +191,31 @@ const handleIncomingCall = async (channelId, data, offerDocId) => {
         }
     }
 
+    if (pc.isSignaling || (pc.signalingState !== 'stable' && data.type === 'offer')) {
+        console.warn("Signal already in progress or same state, skipping:", pc.signalingState);
+        return;
+    }
+
     const offerDoc = doc(db, 'channels', channelId, 'offers', offerDocId);
     const answerCandidates = collection(offerDoc, 'answerCandidates');
     const offerCandidates = collection(offerDoc, 'offerCandidates');
 
-    pc.onicecandidate = (event) => event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
+    try {
+        pc.isSignaling = true;
+        pc.onicecandidate = (event) => event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
 
-    await pc.setRemoteDescription(new RTCSessionDescription({ type: data.type, sdp: data.sdp }));
-    const answerDescription = await pc.createAnswer();
-    await pc.setLocalDescription(answerDescription);
-
-    await updateDoc(offerDoc, { answer: { type: answerDescription.type, sdp: answerDescription.sdp } });
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: data.type, sdp: data.sdp }));
+        
+        if (data.type === 'offer') {
+            const answerDescription = await pc.createAnswer();
+            await pc.setLocalDescription(answerDescription);
+            await updateDoc(offerDoc, { answer: { type: answerDescription.type, sdp: answerDescription.sdp } });
+        }
+    } catch (e) {
+        console.error("Signaling error in handleIncomingCall:", e);
+    } finally {
+        pc.isSignaling = false;
+    }
 
     onSnapshot(offerCandidates, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
@@ -201,22 +237,29 @@ const createPeerConnection = (targetUid) => {
                 audio.id = `audio-${targetUid}`;
                 document.body.appendChild(audio);
             }
-            audio.srcObject = remoteStream;
-            audio.autoplay = true;
-            audio.play().catch(e => console.warn("Audio play failed:", e));
+            if (audio.srcObject !== remoteStream) {
+                audio.srcObject = remoteStream;
+                audio.autoplay = true;
+                audio.play().catch(e => {});
+            }
         } 
         
         if (event.track.kind === 'video') {
             const display = document.getElementById('screen-share-display');
             if (display) {
                 display.classList.remove('hidden');
-                display.innerHTML = ''; 
-                const video = document.createElement('video');
-                video.autoplay = true;
-                video.playsInline = true;
-                video.srcObject = remoteStream;
-                display.appendChild(video);
-                video.play().catch(e => console.warn("Video play failed:", e));
+                let video = display.querySelector('video');
+                if (!video) {
+                    display.innerHTML = ''; 
+                    video = document.createElement('video');
+                    video.autoplay = true;
+                    video.playsInline = true;
+                    display.appendChild(video);
+                }
+                if (video.srcObject !== remoteStream) {
+                    video.srcObject = remoteStream;
+                    video.play().catch(e => {});
+                }
             }
         }
     };
