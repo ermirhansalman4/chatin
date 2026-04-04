@@ -318,6 +318,14 @@
                                 <div style="height: 40px; background: #10002b; border-radius: 8px 8px 0 0;"></div>
                                 <div style="padding: 10px; font-size: 12px; font-weight: 700;">NEBULA SİSİ</div>
                             </div>
+                            <div class="theme-card" data-theme="cyberpunk">
+                                <div style="height: 40px; background: #0a0a0a; border-radius: 8px 8px 0 0; border-top: 2px solid #00ffcc;"></div>
+                                <div style="padding: 10px; font-size: 12px; font-weight: 700; color: #00ffcc;">SİBER PUNK 👑</div>
+                            </div>
+                            <div class="theme-card" data-theme="gold">
+                                <div style="height: 40px; background: #111111; border-radius: 8px 8px 0 0; border-top: 2px solid #ffd700;"></div>
+                                <div style="padding: 10px; font-size: 12px; font-weight: 700; color: #ffd700;">ALTIN TİTANYUM 👑</div>
+                            </div>
                         </div>
                     </div>
 
@@ -603,10 +611,14 @@
 
                 <div id="theme-selector-area" class="hidden">
                     <h3 style="margin-bottom: 16px;">Görünüm & Temalar</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                         <button class="theme-option" data-theme="default" style="background: #05060f; padding: 12px; border-radius: 12px; border: 1px solid var(--border-gold); color: white; cursor: pointer;">Varsayılan</button>
                         <button class="theme-option" data-theme="solar" style="background: #1a1a2e; padding: 12px; border-radius: 12px; border: 1px solid #e94560; color: white; cursor: pointer;">Solar Flare</button>
                         <button class="theme-option" data-theme="nebula" style="background: #2d0050; padding: 12px; border-radius: 12px; border: 1px solid #a000ff; color: white; cursor: pointer;">Nebula</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <button class="theme-option" data-theme="cyberpunk" style="background: #0a0a0a; padding: 12px; border-radius: 12px; border: 1px solid #00ffcc; color: #00ffcc; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">Siber Punk 👑</button>
+                        <button class="theme-option" data-theme="gold" style="background: #111111; padding: 12px; border-radius: 12px; border: 1px solid #ffd700; color: #ffd700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">Altın Titanyum 👑</button>
                     </div>
 
                     <h3 style="margin-top: 32px; margin-bottom: 16px;">Özel Davet Ayarları</h3>
@@ -681,7 +693,7 @@
 
         setupModal('add-server-btn', 'create-server-modal', 'cancel-server-btn');
         setupModal('explore-btn', 'join-server-modal', 'cancel-join-btn');
-        setupModal('settings-btn', 'account-settings-modal', 'cancel-settings-btn-2');
+        setupModal('settings-btn', 'user-settings-modal', 'settings-close-btn');
 
         const profileModal = document.getElementById('profile-modal-overlay');
         document.getElementById('close-profile-btn').onclick = () => profileModal.classList.add('hidden');
@@ -771,6 +783,14 @@
             try {
                 const { db, auth } = await import('./firebase.config.js');
                 const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
+                const { updateProfile } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js');
+                
+                if (auth.currentUser) {
+                    await updateProfile(auth.currentUser, {
+                        displayName: newName,
+                        photoURL: newPfp || auth.currentUser.photoURL
+                    });
+                }
                 
                 await updateDoc(doc(db, 'users', auth.currentUser.uid), {
                     username: newName,
@@ -801,17 +821,50 @@
         // PROFILE & BANNER FILE HANDLERS
         const handleFileUpload = (inputId, displayId) => {
             const input = document.getElementById(inputId);
-            input.onchange = (e) => {
+            input.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                if (file.size > 1024 * 1024) return showToast("Dosya çok büyük! (Max 1MB)", "error");
 
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    document.getElementById(displayId).value = event.target.result;
-                    showToast("Görsel hazır! Kaydet butonuna basmayı unutma.");
-                };
-                reader.readAsDataURL(file);
+                try {
+                    const { db, auth, storage } = await import('./firebase.config.js');
+                    const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
+                    const { ref, uploadBytesResumable, getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js');
+                    
+                    let isPremium = false;
+                    if (auth.currentUser) {
+                        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+                        isPremium = userDoc.exists() && userDoc.data().isPremium;
+                    }
+
+                    const maxSize = isPremium ? 5 * 1024 * 1024 : 700 * 1024;
+                    if (file.size > maxSize) {
+                        return showToast(isPremium ? "Dosya çok büyük! (Max 5MB)" : "Dosya çok büyük! Premium'a geçerek 5MB'a (Örn. GIF) kadar yükleyebilirsiniz.", "error");
+                    }
+
+                    showToast("Dosya yükleniyor, lütfen bekleyin...", "info");
+
+                    const fileExt = file.name.split('.').pop();
+                    const fileRef = ref(storage, `profiles/${auth.currentUser.uid}_${Date.now()}.${fileExt}`);
+                    const uploadTask = uploadBytesResumable(fileRef, file);
+
+                    uploadTask.on('state_changed', 
+                        () => {}, 
+                        (error) => { showToast("Yükleme hatası: " + error.message, "error"); }, 
+                        async () => {
+                            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                            document.getElementById(displayId).value = downloadURL;
+                            showToast("Görsel hazır! Kaydet butonuna basmayı unutma.", "success");
+                        }
+                    );
+                } catch (err) {
+                    console.error("Storage yükleme hatası:", err);
+                    showToast("Bir hata oluştu, yerel okunuyor...");
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        document.getElementById(displayId).value = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
             };
         };
 
@@ -937,6 +990,10 @@
             
             <div style="margin-top: 24px; font-size: 10px; color: gold; opacity: 0.6; font-weight: 800; letter-spacing: 1px;">SADECE 50 TL / AY</div>
         </div>
+    </div>
+    <!-- VERSION BADGE -->
+    <div id="app-version-badge" style="position: fixed; bottom: 12px; right: 12px; font-size: 11px; color: var(--text-secondary); font-weight: 800; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-gold); z-index: 9999; pointer-events: none; backdrop-filter: blur(5px);">
+        v1.2.0 • <span style="color: var(--brand-color);">Galactic Edition</span>
     </div>
 </body>
 </html>

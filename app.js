@@ -588,16 +588,22 @@ export const toggleReaction = async (msgId, emoji) => {
 const syncUserToFirestore = async (user) => {
     if (!user) return;
     const userRef = doc(db, 'users', user.uid);
-    const userData = {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName || "Kullanıcı",
-        username: (user.displayName || user.email.split('@')[0]).toLowerCase().replace(/\s+/g, '_'),
-        photoURL: user.photoURL || 'https://via.placeholder.com/150',
-        lastLogin: serverTimestamp()
-    };
-    await setDoc(userRef, userData, { merge: true });
-    console.log("User synced to Firestore:", userData.username);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+        const userData = {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || "Kullanıcı",
+            username: (user.displayName || user.email.split('@')[0]).toLowerCase().replace(/\s+/g, '_'),
+            photoURL: user.photoURL || 'https://via.placeholder.com/150',
+            lastLogin: serverTimestamp()
+        };
+        await setDoc(userRef, userData, { merge: true });
+        console.log("New user created in Firestore:", userData.username);
+    } else {
+        await updateDoc(userRef, { lastLogin: serverTimestamp() });
+        console.log("Existing user updated login timestamp.");
+    }
 };
 
 // --- AUTHENTICATION LISTENERS ---
@@ -1687,13 +1693,19 @@ auth.onAuthStateChanged(async (user) => {
         }
 
         // Kullanıcı dökümanını oluştur veya güncelle
-        await setDoc(doc(db, 'users', user.uid), {
-            uid: user.uid,
-            username: user.displayName || "Glgesi",
-            username_lower: (user.displayName || "").toLowerCase(),
-            photoURL: user.photoURL,
-            lastSeen: serverTimestamp()
-        }, { merge: true });
+        const uRef = doc(db, 'users', user.uid);
+        const uSnap = await getDoc(uRef);
+        if (!uSnap.exists()) {
+            await setDoc(uRef, {
+                uid: user.uid,
+                username: user.displayName || "Kullanici",
+                username_lower: (user.displayName || "").toLowerCase(),
+                photoURL: user.photoURL || 'https://via.placeholder.com/150',
+                lastSeen: serverTimestamp()
+            }, { merge: true });
+        } else {
+            await updateDoc(uRef, { lastSeen: serverTimestamp() });
+        }
 
         // BEKLEYEN DAVET VAR MI?
         const pendingInvite = sessionStorage.getItem('pendingInvite');
@@ -1986,12 +1998,29 @@ const listenToPremiumRequests = () => {
 const themes = {
     default: { brand: '#c5a059', bg: '#05060f', side: 'rgba(10, 11, 24, 0.95)' },
     solar: { brand: '#e94560', bg: '#1a1a2e', side: '#16213e' },
-    nebula: { brand: '#a000ff', bg: '#10002b', side: '#240046' }
+    nebula: { brand: '#a000ff', bg: '#10002b', side: '#240046' },
+    cyberpunk: { brand: '#00ffcc', bg: '#0a0a0a', side: 'rgba(20, 20, 20, 0.95)' },
+    gold: { brand: '#ffd700', bg: '#111111', side: 'rgba(20, 20, 20, 0.9)' }
 };
 
 document.querySelectorAll('.theme-option').forEach(btn => {
-    btn.onclick = () => {
-        const theme = themes[btn.dataset.theme];
+    btn.onclick = async () => {
+        const themeKey = btn.dataset.theme;
+        
+        if (themeKey === 'cyberpunk' || themeKey === 'gold') {
+            const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
+            if (serverSnap.exists()) {
+                const ownerUid = serverSnap.data().ownerUid;
+                const ownerSnap = await getDoc(doc(db, 'users', ownerUid));
+                const isPremium = ownerSnap.exists() && ownerSnap.data().isPremium;
+
+                if (!isPremium) {
+                    return showToast("Bu tema sadece Premium sunucular içindir! 👑", "error");
+                }
+            }
+        }
+
+        const theme = themes[themeKey];
         document.documentElement.style.setProperty('--brand-color', theme.brand);
         document.documentElement.style.setProperty('--bg-deep', theme.bg);
         document.documentElement.style.setProperty('--bg-side', theme.side);
@@ -2349,12 +2378,20 @@ document.getElementById('reset-password-btn').onclick = async () => {
 const themes_config = {
     default: { brand: '#c5a059', bg: '#05060f', side: 'rgba(10, 11, 24, 0.95)' },
     solar: { brand: '#e94560', bg: '#1a1a2e', side: '#16213e' },
-    nebula: { brand: '#a000ff', bg: '#10002b', side: '#240046' }
+    nebula: { brand: '#a000ff', bg: '#10002b', side: '#240046' },
+    cyberpunk: { brand: '#00ffcc', bg: '#0a0a0a', side: 'rgba(20, 20, 20, 0.95)' },
+    gold: { brand: '#ffd700', bg: '#111111', side: 'rgba(20, 20, 20, 0.9)' }
 };
 
 document.querySelectorAll('.theme-card').forEach(card => {
-    card.onclick = () => {
+    card.onclick = async () => {
         const themeK = card.dataset.theme;
+        if (themeK === 'cyberpunk' || themeK === 'gold') {
+            const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+            if (!userSnap.exists() || !userSnap.data().isPremium) {
+                return showToast("Bu tema yalnızca Premium üyeler içindir! 👑", "error");
+            }
+        }
         applyTheme(themeK);
         localStorage.setItem('chatin-theme', themeK);
         // Aktif kartı güncelle
