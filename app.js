@@ -333,8 +333,8 @@ const messageList = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const chatHeaderName = document.getElementById('current-channel-name');
 const serverListContainer = document.getElementById('server-list');
-const textChannelsContainer = document.getElementById('text-channels-container');
-const voiceChannelsContainer = document.getElementById('voice-channels-container');
+let textChannelsContainer = document.getElementById('text-channels-container');
+let voiceChannelsContainer = document.getElementById('voice-channels-container');
 const memberListContainer = document.getElementById('member-list-container');
 const activeServerName = document.getElementById('active-server-name');
 const inviteBox = document.getElementById('invite-box');
@@ -656,29 +656,83 @@ setupEmojiItems(); // Initial setup
 // --- DM (DIRECT MESSAGES) SYSTEM ---
 // (State consolidated at top)
 
+// Kanal ekleme butonlarını yeniden bağla (event delegation halleddiği için şimdilik ek işlem gereksiz)
+const rebindAddChannelButtons = () => {
+    // Butonlar document-level event delegation ile çalışıyor, ekstra bağlama gerekmez
+};
+
+// Orijinal channel-list HTML yapısını geri yükle ve DOM referanslarını tazele
+const restoreChannelListStructure = () => {
+    const cl = document.getElementById('channel-list');
+    if (!cl) return;
+    cl.innerHTML = `
+        <!-- Text Channels Section -->
+        <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 8px 8px; color: var(--text-secondary); font-size: 11px; font-weight: 800; text-transform: uppercase;">
+                <span>Metin Kanalları</span>
+                <i data-lucide="plus" id="add-text-channel-btn" class="add-chan-plus" style="cursor: pointer; width: 14px; height: 14px;"></i>
+            </div>
+            <div id="text-channels-container"></div>
+        </div>
+
+        <!-- Voice Channels Section -->
+        <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 8px 8px; color: var(--text-secondary); font-size: 11px; font-weight: 800; text-transform: uppercase;">
+                <span>Ses Kanalları</span>
+                <i data-lucide="plus" id="add-voice-channel-btn" class="add-chan-plus" style="cursor: pointer; width: 14px; height: 14px;"></i>
+            </div>
+            <div id="voice-channels-container"></div>
+        </div>
+    `;
+    // DOM referanslarını güncelle
+    textChannelsContainer = document.getElementById('text-channels-container');
+    voiceChannelsContainer = document.getElementById('voice-channels-container');
+    lucide.createIcons();
+    // Kanal ekleme butonlarını yeniden bağla
+    rebindAddChannelButtons();
+};
+
 const toggleDMView = () => {
+    // Mesajlaşma alanını temizle
+    messageList.innerHTML = '';
+    if (unsubscribeMessages) { unsubscribeMessages(); unsubscribeMessages = null; }
+
     if (isDMMode) {
+        currentDMRecipientId = null;
+        currentChannelId = null;
+
         dmSidebarTrigger?.classList.add('active');
         const activeServerNameElem = document.getElementById('active-server-name');
         if (activeServerNameElem) activeServerNameElem.innerText = "Özel Mesajlar";
         document.getElementById('current-channel-name').innerText = "Arkadaş Seç";
-        document.getElementById('channel-list').innerHTML = '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-secondary); opacity:0.6;"><i data-lucide="message-square" style="width:48px; height:48px; margin-bottom:16px;"></i><p>Mesajlaşmak için bir kankanı seç!</p></div>';
+        
+        // Ses alanı ve üye listesini gizle
+        document.getElementById('voice-area')?.classList.add('hidden');
+        document.getElementById('member-list')?.classList.add('hidden');
+        
         loadDMList();
         lucide.createIcons();
-        document.getElementById('voice-channels-area')?.classList.add('hidden');
-        document.getElementById('member-list-container')?.classList.add('hidden');
     } else {
+        // DM'den çıkış — Sunucu moduna dön
+        currentDMRecipientId = null;
+        currentChannelId = null;
+
         dmSidebarTrigger?.classList.remove('active');
         const activeServerNameElem = document.getElementById('active-server-name');
         if (activeServerNameElem) activeServerNameElem.innerText = currentServerName || "Sunucu Seçin";
-        document.getElementById('voice-channels-area')?.classList.remove('hidden');
-        document.getElementById('member-list-container')?.classList.remove('hidden');
+        
+        // Görünürlüğü geri getir
+        document.getElementById('voice-area')?.classList.add('hidden'); // Ses alanı sadece ses kanalındayken açılır
+        document.getElementById('member-list')?.classList.remove('hidden');
+
+        // Kanal yapısını geri yükle
+        restoreChannelListStructure();
 
         if (currentServerId) {
             listenToChannels(currentServerId);
-            // Members will be handled by listenToChannels or should be refreshed
+            listenToMembers(currentServerId, currentServerOwnerUid);
         } else {
-            document.getElementById('channel-list').innerHTML = '<div style="padding:20px; text-align:center; color:gray;">Bir galaksi seç veya arkadaşlarınla konuş!</div>';
+            channelList.innerHTML = '<div style="padding:20px; text-align:center; color:gray;">Bir galaksi seç veya arkadaşlarınla konuş!</div>';
         }
     }
 };
@@ -995,10 +1049,21 @@ export const listenToServers = () => {
 };
 
 export const switchServer = async (serverId, serverData) => {
+    // Mesaj alanını temizle ve önceki dinleyiciyi kapat
+    if (unsubscribeMessages) { unsubscribeMessages(); unsubscribeMessages = null; }
+    messageList.innerHTML = '';
+    currentChannelId = null;
+
     if (isDMMode) {
         isDMMode = false;
-        toggleDMView();
+        currentDMRecipientId = null;
+        document.getElementById('dm-sidebar-trigger')?.classList.remove('active');
+        document.getElementById('member-list')?.classList.remove('hidden');
+        
+        // Kanal yapısını geri yükle
+        restoreChannelListStructure();
     }
+    
     currentServerId = serverId;
     currentServerName = serverData.name;
     window.lastActiveServerId = serverId;
@@ -1245,18 +1310,17 @@ const listenToChannels = (serverId) => {
     const q = query(collection(db, 'channels'), where('serverId', '==', serverId));
 
     unsubscribeChannels = onSnapshot(q, async (snapshot) => {
-        // --- BU KISIM ÖNEMLİ: KULLANICI ROLÜNE GÖRE FİLTRELEME ---
-        const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
-        const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === auth.currentUser.uid;
+        // --- KULLANICI YETKİLERİNİ BİR KERE AL ---
+        const serverSnap = await getDoc(doc(db, 'servers', serverId));
+        const isOwner = serverSnap.exists() && serverSnap.data().ownerUid === auth.currentUser.uid;
 
         let allowedChannelIds = [];
         if (!isOwner) {
-            const memberRef = doc(db, 'servers', currentServerId, 'members', auth.currentUser.uid);
-            const memberSnap = await getDoc(memberRef);
+            const memberSnap = await getDoc(doc(db, 'servers', serverId, 'members', auth.currentUser.uid));
             if (memberSnap.exists()) {
                 const roleIds = memberSnap.data().roles || [];
                 for (const rid of roleIds) {
-                    const roleSnap = await getDoc(doc(db, 'servers', currentServerId, 'roles', rid));
+                    const roleSnap = await getDoc(doc(db, 'servers', serverId, 'roles', rid));
                     if (roleSnap.exists()) {
                         const accessible = roleSnap.data().accessibleChannels || [];
                         allowedChannelIds = [...new Set([...allowedChannelIds, ...accessible])];
@@ -1265,19 +1329,24 @@ const listenToChannels = (serverId) => {
             }
         }
 
-        textChannelsContainer.innerHTML = '';
-        voiceChannelsContainer.innerHTML = '';
-        snapshot.docs.forEach((doc, index) => {
-            const data = doc.data();
-            // Eğer sahip değilsek ve bu kanal bizim kanal listemizde yoksa GÖSTERME (Erişim kısıtlıysa)
-            // Not: Eğer sunucuda hiç rol yoksa veya rolün içine kanal eklenmemişse görünürlük durumunu sunucu sahibine bırakıyoruz
-            const canSee = isOwner || allowedChannelIds.includes(doc.id);
+        // DOM Referanslarının hala geçerli olduğundan emin ol
+        if (!textChannelsContainer || !textChannelsContainer.parentNode) {
+            textChannelsContainer = document.getElementById('text-channels-container');
+            voiceChannelsContainer = document.getElementById('voice-channels-container');
+        }
+
+        if (textChannelsContainer) textChannelsContainer.innerHTML = '';
+        if (voiceChannelsContainer) voiceChannelsContainer.innerHTML = '';
+
+        snapshot.docs.forEach((docSnap, index) => {
+            const data = docSnap.data();
+            const canSee = isOwner || allowedChannelIds.includes(docSnap.id);
 
             if (canSee) {
-                renderChannelItem(data, doc.id);
-                // Auto switch to first text channel if not set
-                if (index === 0 && !currentChannelId && data.type === 'text') {
-                    switchChannel(doc.id, data.name, data.type);
+                renderChannelItem(data, docSnap.id, isOwner);
+                // İlk text kanalına otomatik geçiş
+                if (!currentChannelId && data.type === 'text') {
+                    switchChannel(docSnap.id, data.name, data.type);
                 }
             }
         });
@@ -1567,13 +1636,9 @@ const renderServerIcon = (data, id) => {
     serverListContainer.lastElementChild.addEventListener('click', () => switchServer(id, data));
 };
 
-const renderChannelItem = async (data, id) => {
+const renderChannelItem = (data, id, isOwner) => {
     const icon = data.type === 'voice' ? 'volume-2' : 'hash';
     const activeStyle = currentChannelId === id ? 'background-color: var(--bg-hover); color: white;' : '';
-
-    // Check if user is owner to show management icons
-    const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
-    const isOwner = serverDoc.exists() && serverDoc.data().ownerUid === auth.currentUser.uid;
 
     const html = `
         <div class="channel-item" data-id="${id}" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; color: var(--text-secondary); ${activeStyle} position: relative;">
