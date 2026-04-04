@@ -787,8 +787,7 @@
                 
                 if (auth.currentUser) {
                     await updateProfile(auth.currentUser, {
-                        displayName: newName,
-                        photoURL: newPfp || auth.currentUser.photoURL
+                        displayName: newName
                     });
                 }
                 
