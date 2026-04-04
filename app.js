@@ -1419,7 +1419,6 @@ window.openUserProfile = async (data) => {
     // Önce modalı aç — async işlemler sonradan dolduracak
     if (currentUser && currentUser.uid === data.uid) {
         editBtn.classList.remove('hidden');
-        document.getElementById('edit-profile-pfp-input').value = data.photoURL || '';
         document.getElementById('edit-profile-banner-input').value = data.bannerURL || '';
         document.getElementById('edit-profile-effect-input').value = data.messageEffect || 'none';
         document.getElementById('edit-profile-name-input').value = data.username || '';

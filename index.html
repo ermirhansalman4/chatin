@@ -716,7 +716,6 @@
                     // Profil modalını da güncelle
                     document.getElementById('edit-profile-name-input').value = data.username || "";
                     document.getElementById('edit-profile-bio-input').value = data.bio || "";
-                    document.getElementById('edit-profile-pfp-input').value = data.photoURL || "";
                 } else {
                     document.getElementById('current-user-name').innerText = user.displayName;
                     document.getElementById('current-user-avatar').src = user.photoURL;
