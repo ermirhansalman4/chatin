@@ -345,9 +345,18 @@ const voiceArea = document.getElementById('voice-area');
 const voiceGrid = document.getElementById('voice-grid');
 const messageInputContainer = document.getElementById('message-input-container');
 
-// BLDRM SES
+// BİLDİRİM SESLERİ
 const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+const joinSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
+const leaveSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+
 notificationSound.volume = 0.5;
+joinSound.volume = 0.4;
+leaveSound.volume = 0.4;
+
+// SES DURUMU
+let isMicMuted = false;
+let isDeafened = false;
 
 // --- CUSTOM DIALOGS SYSTEM ---
 window.customConfirm = (title, msg) => {
@@ -1402,14 +1411,18 @@ export const renameChannel = async (channelId, oldName) => {
 };
 
 export const switchChannel = async (channelId, channelName, type = 'text') => {
-    // Ses kanalından ayrılıyor olabiliriz
+    // Ses kanalından ayrılıyor olabiliriz (Eğer farklı bir kanala geçiyorsak)
     if (currentVoiceChannelId && currentVoiceChannelId !== channelId) {
         await leaveVoiceChannel(currentVoiceChannelId);
         currentVoiceChannelId = null;
         if (unsubscribeVoiceMembers) unsubscribeVoiceMembers();
+        
+        const soundEnabled = localStorage.getItem('chatin-sound-enabled') !== 'false';
+        if (soundEnabled) leaveSound.play().catch(e => { });
     }
 
     currentChannelId = channelId;
+    currentChannelType = type;
     listenToMessages(channelId);
 
     if (type === 'voice') {
@@ -1424,6 +1437,9 @@ export const switchChannel = async (channelId, channelName, type = 'text') => {
         voiceArea.classList.remove('hidden');
 
         listenToVoiceParticipants(channelId);
+        
+        const soundEnabled = localStorage.getItem('chatin-sound-enabled') !== 'false';
+        if (soundEnabled) joinSound.play().catch(e => { });
     } else {
         chatHeaderName.innerText = channelName;
 
@@ -1431,7 +1447,6 @@ export const switchChannel = async (channelId, channelName, type = 'text') => {
         messageList.classList.remove('hidden');
         messageInputContainer.classList.remove('hidden');
         voiceArea.classList.add('hidden');
-
     }
 };
 
@@ -2181,131 +2196,159 @@ document.addEventListener('click', async (e) => {
 });
 
 // SUNUCUYA KATILMA (MODAL FINAL BUTONU)
+// ANA TIKLAMA DİNLEYİCİSİ (GLOBAL EVENT DELEGATION)
 document.addEventListener('click', async (e) => {
+    // 1. Sunucuya Katılma (Modal Butonu)
     if (e.target.closest('#join-server-final-btn')) {
         const inviteInput = document.getElementById('join-invite-input');
         const code = inviteInput.value.trim();
         if (!code) return showToast("Davet kodu girmelisin!", "error");
-
         try {
             await joinServer(code);
             document.getElementById('join-server-modal').classList.add('hidden');
             inviteInput.value = '';
-
-            listenToServers(); // Listeyi yenile
+            listenToServers();
         } catch (err) {
             showToast(err.message, "error");
         }
     }
-});
 
-// Ses Ayarları
-let isMuted = false;
-let isDeafened = false;
-
-document.addEventListener('click', async (e) => {
-    const micBtn = e.target.closest('#mic-btn');
-    if (micBtn) {
-        isMuted = !isMuted;
-        toggleLocalMic(!isMuted); // GERÇEK MİKROFONU KAPAT/AÇ
-        const icon = isMuted ? 'mic-off' : 'mic';
-        micBtn.innerHTML = `<i data-lucide="${icon}"></i>`;
-        micBtn.style.color = isMuted ? 'var(--error-color)' : 'var(--text-secondary)';
-        micBtn.style.background = isMuted ? 'rgba(255, 71, 87, 0.1)' : '';
-        lucide.createIcons();
-        showToast(isMuted ? "Mikrofon kapatıldı" : "Mikrofon açıldı");
-    }
-
-    const deafBtn = e.target.closest('#deafen-btn');
-    if (deafBtn) {
-        isDeafened = !isDeafened;
-        // Lucide'de headphones-off olmadığı için aynı ikonu tutup rengini değiştiriyoruz
-        deafBtn.innerHTML = `<i data-lucide="headphones"></i>`;
-        deafBtn.style.color = isDeafened ? 'var(--error-color)' : 'var(--text-secondary)';
-        deafBtn.style.background = isDeafened ? 'rgba(255, 71, 87, 0.1)' : '';
-        lucide.createIcons();
-        showToast(isDeafened ? "Sesler kapatıldı" : "Sesler açıldı");
-    }
-
+    // 2. Ayarlar Popover Kontrolü
     const settingsBtn = e.target.closest('#settings-btn');
     const popover = document.getElementById('settings-popover');
     if (settingsBtn) {
         e.stopPropagation();
-        popover.classList.toggle('hidden');
+        popover?.classList.toggle('hidden');
         lucide.createIcons();
-    } else {
-        // Herhangi bir yere tıklandığında popover'ı kapat
+    } else if (popover && !popover.contains(e.target)) {
         popover.classList.add('hidden');
     }
 
+    // 3. Profil Görüntüleme
     const profileBtn = e.target.closest('#user-profile-btn') || e.target.closest('#open-profile-edit');
     if (profileBtn) {
         const user = auth.currentUser;
         if (user && window.openUserProfile) {
             window.openUserProfile({
                 uid: user.uid,
-                username: user.displayName || user.username || "Kullanıcı",
+                username: user.displayName || "Kullanıcı",
                 photoURL: user.photoURL
             });
         }
     }
 
-    const accSetsTrigger = e.target.closest('#open-account-settings');
-    if (accSetsTrigger) {
-        document.getElementById('account-settings-modal').classList.remove('hidden');
+    // 4. Hesap Ayarları Modalı
+    if (e.target.closest('#open-account-settings')) {
+        document.getElementById('account-settings-modal')?.classList.remove('hidden');
     }
 
-    const logoutTrigger = e.target.closest('#logout-btn-trigger');
-    if (logoutTrigger) {
-        const { logout } = await import('./auth.js');
+    // 5. Oturumu Kapat
+    if (e.target.closest('#logout-btn-trigger')) {
         const confirmed = await customConfirm("Oturumu Kapat", "Galaksiden ayrılmak istediğinize emin misiniz?");
         if (confirmed) {
-            await logout();
+            await signOut(auth);
             window.location.reload();
         }
     }
 
     // --- SES KANALI AKSİYONLARI ---
 
-    // Ses Kanalı Mikrofonu
-    const voiceMic = e.target.closest('#voice-mic-active');
-    if (voiceMic) {
-        voiceMic.classList.toggle('muted');
-        const isMute = voiceMic.classList.contains('muted');
-        voiceMic.innerHTML = `<i data-lucide="${isMute ? 'mic-off' : 'mic'}"></i>`;
-        voiceMic.style.color = isMute ? 'var(--error-color)' : 'white';
+    // Mikrofon Kontrolü (Global Alt Bar + Ses Paneli)
+    const micBtn = e.target.closest('#mic-btn');
+    const vMicActive = e.target.closest('#voice-mic-active');
+    if (micBtn || vMicActive) {
+        isMicMuted = !isMicMuted;
+        toggleLocalMic(!isMicMuted);
+        
+        const mainMic = document.getElementById('mic-btn');
+        const sideMic = document.getElementById('voice-mic-active');
+        [mainMic, sideMic].forEach(btn => {
+            if (btn) {
+                btn.classList.toggle('off', isMicMuted);
+                btn.querySelector('i')?.setAttribute('data-lucide', isMicMuted ? 'mic-off' : 'mic');
+                btn.title = isMicMuted ? "Sesi Aç" : "Sesi Kapat";
+            }
+        });
         lucide.createIcons();
+        showToast(isMicMuted ? "Mikrofon kapatıldı" : "Mikrofon açıldı");
     }
 
-    // Ses Kanalı Ekran Paylaşımı
+    // Kulaklık / Sağırlaştırma
+    const deafenBtn = e.target.closest('#deafen-btn');
+    if (deafenBtn) {
+        isDeafened = !isDeafened;
+        document.querySelectorAll('audio').forEach(audio => {
+            if (audio.id.startsWith('audio-')) audio.muted = isDeafened;
+        });
+        const icon = deafenBtn.querySelector('i');
+        if (icon) icon.setAttribute('data-lucide', isDeafened ? 'headphones-off' : 'headphones');
+        deafenBtn.classList.toggle('off', isDeafened);
+        deafenBtn.title = isDeafened ? "Sesi Aç" : "Sağırlaştır";
+        lucide.createIcons();
+        showToast(isDeafened ? "Sesler kapatıldı" : "Sesler açıldı");
+    }
+
+    // Ekran Paylaşımı
     const voiceScreen = e.target.closest('#voice-screen-share');
     if (voiceScreen) {
-        voiceScreen.classList.toggle('sharing');
-        const isSharing = voiceScreen.classList.contains('sharing');
-
+        const isSharing = !voiceScreen.classList.contains('sharing');
         if (isSharing) {
-            startScreenShare().then(success => {
-                if (!success) {
-                    voiceScreen.classList.remove('sharing');
-                    showToast("Ekran paylaşımı başlatılamadı.", "error");
-                } else {
-                    voiceScreen.style.color = 'var(--brand-color)';
-                    showToast("Ekran paylaşımı başladı!", "success");
-                }
-            });
+            const success = await startScreenShare();
+            if (success) {
+                voiceScreen.classList.add('sharing');
+                voiceScreen.style.color = 'var(--brand-color)';
+            }
         } else {
-            stopScreenShare();
+            await stopScreenShare();
+            voiceScreen.classList.remove('sharing');
             voiceScreen.style.color = 'white';
-            showToast("Ekran paylaşımı durduruldu.", "info");
         }
     }
 
-    // Ses Kanalı Ayrılma
-    const voiceLeave = e.target.closest('#disconnect-voice-btn');
-    if (voiceLeave) {
-        window.dispatchEvent(new CustomEvent('leave-voice'));
-        showToast("Ses kanalından ayrıldınız.", "info");
+    // Ses Kanalından Ayrılma
+    if (e.target.closest('#disconnect-voice-btn')) {
+        if (currentVoiceChannelId) {
+            await leaveVoiceChannel(currentVoiceChannelId);
+            currentVoiceChannelId = null;
+            if (unsubscribeVoiceMembers) unsubscribeVoiceMembers();
+            
+            const soundEnabled = localStorage.getItem('chatin-sound-enabled') !== 'false';
+            if (soundEnabled) leaveSound.play().catch(e => { });
+
+            showToast("Ses kanalından ayrıldınız.", "info");
+
+            // İlk Metin Kanalına Dön
+            const textChannels = document.querySelectorAll('#text-channels-container .channel-item');
+            if (textChannels.length > 0) {
+                const firstChan = textChannels[0];
+                switchChannel(firstChan.dataset.id, firstChan.querySelector('span').innerText, 'text');
+            } else {
+                voiceArea.classList.add('hidden');
+                messageList.classList.remove('hidden');
+                messageInputContainer.classList.remove('hidden');
+                chatHeaderName.innerText = "Kanal Seçin";
+            }
+        }
     }
+
+    // Ses Ayarları ve Mobil Menü
+    if (e.target.closest('#voice-settings-active')) {
+        document.getElementById('voice-settings-modal')?.classList.remove('hidden');
+        lucide.createIcons();
+    }
+    if (e.target.closest('#mobile-sidebar-toggle')) {
+        document.body.classList.toggle('show-sidebar');
+        document.body.classList.remove('show-members');
+    }
+    if (e.target.closest('#mobile-members-toggle')) {
+        document.body.classList.toggle('show-members');
+        document.body.classList.remove('show-sidebar');
+    }
+    if (e.target.closest('#chat-messages') || e.target.closest('#chat-input')) {
+        document.body.classList.remove('show-sidebar');
+        document.body.classList.remove('show-members');
+    }
+});
 
     // Ses Kanalı Ayarları Modalı Aç
     const voiceSets = e.target.closest('#voice-settings-active');
