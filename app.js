@@ -479,7 +479,7 @@ const renderMessage = (data, id) => {
                 ` : ''}
             </div>
 
-            <img class="msg-avatar" src="${data.userPhoto || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" 
+            <img class="msg-avatar" src="${data.photoURL || data.userPhoto || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" 
                  style="width: 40px; height: 40px; border-radius: 50%; cursor: pointer;">
             <div style="flex:1;">
                 <div style="display: flex; gap: 8px; align-items: baseline;">
@@ -500,7 +500,7 @@ const renderMessage = (data, id) => {
     messageList.insertAdjacentHTML('beforeend', msgHtml);
 
     const item = messageList.lastElementChild;
-    const profileOpen = () => window.openUserProfile({ username: data.username, photoURL: data.userPhoto, uid: data.uid });
+    const profileOpen = () => window.openUserProfile({ username: data.username, photoURL: data.photoURL || data.userPhoto, uid: data.uid });
     item.querySelector('.msg-avatar').addEventListener('click', profileOpen);
     item.querySelector('.msg-username').addEventListener('click', profileOpen);
 
@@ -913,7 +913,8 @@ export const sendMessage = async (content, isFile = false) => {
         uid: auth.currentUser.uid,
         username: auth.currentUser.displayName || "Kullanıcı",
         photoURL: auth.currentUser.photoURL,
-        timestamp: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        channelId: currentChannelId,
         reactions: {}
     };
 
@@ -924,7 +925,7 @@ export const sendMessage = async (content, isFile = false) => {
         msgData.text = content;
     }
 
-    await addDoc(collection(db, `servers/${currentServerId}/channels/${currentChannelId}/messages`), msgData);
+    await addDoc(collection(db, 'messages'), msgData);
 };
 
 export const sendDM = async (content, isFile = false) => {
@@ -2198,6 +2199,13 @@ document.addEventListener('click', async (e) => {
 // SUNUCUYA KATILMA (MODAL FINAL BUTONU)
 // ANA TIKLAMA DİNLEYİCİSİ (GLOBAL EVENT DELEGATION)
 document.addEventListener('click', async (e) => {
+    // MODAL KAPATMA BUTONLARI (X)
+    if (e.target.closest('#settings-close-btn')) document.getElementById('user-settings-modal')?.classList.add('hidden');
+    if (e.target.closest('#close-server-settings')) document.getElementById('server-settings-modal')?.classList.add('hidden');
+    if (e.target.closest('#close-friends-btn')) document.getElementById('friends-modal')?.classList.add('hidden');
+    if (e.target.closest('#close-profile-btn')) document.getElementById('profile-modal-overlay')?.classList.add('hidden');
+    if (e.target.closest('#close-voice-settings')) document.getElementById('voice-settings-modal')?.classList.add('hidden');
+
     // 1. Sunucuya Katılma (Modal Butonu)
     if (e.target.closest('#join-server-final-btn')) {
         const inviteInput = document.getElementById('join-invite-input');
