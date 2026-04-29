@@ -557,6 +557,22 @@
         </div>
     </div>
 
+    <!-- IMAGE CROPPER MODAL -->
+    <div id="cropper-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 20000; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
+        <div style="width: 90%; max-width: 500px; background: #111; border: 1px solid var(--border-gold); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="padding: 20px; border-bottom: 1px solid rgba(255,215,0,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="color: var(--brand-color); margin: 0; font-size: 18px;">Görseli Ayarla</h3>
+                <button id="cropper-cancel-btn" style="background: transparent; border: none; color: #fff; cursor: pointer;"><i data-lucide="x"></i></button>
+            </div>
+            <div style="width: 100%; height: 400px; background: #000; display: flex; align-items: center; justify-content: center;">
+                <img id="cropper-image" src="" style="max-width: 100%; max-height: 100%; display: block;">
+            </div>
+            <div style="padding: 20px; display: flex; gap: 12px;">
+                <button id="cropper-save-btn" class="auth-btn" style="flex: 1;">KAYDET VE YÜKLE</button>
+            </div>
+        </div>
+    </div>
+
     <!-- SERVER SETTINGS MODAL -->
     <!-- GLOBAL CUSTOM MODALS (CONFIRM & PROMPT) -->
     <div id="custom-confirm-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 15000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px);">
@@ -1036,22 +1052,23 @@
                 
                 if (auth.currentUser) {
                     try {
-                        await updateProfile(auth.currentUser, {
-                            displayName: newName
-                            // photoURL: newPfp // Base64 is too long for Firebase Auth
-                        });
+                        await updateProfile(auth.currentUser, { displayName: newName });
                     } catch (authErr) {
                         console.warn("Auth profile name update failed:", authErr);
                     }
                 }
-                
-                await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+
+                // Sadece dolu alanları güncelle
+                const updateData = {
                     username: newName,
-                    photoURL: newPfp,
-                    bannerURL: newBanner,
                     bio: newBio,
                     messageEffect: newEffect
-                });
+                };
+                // photoURL yalnızca değiştirildiyse güncelle (boş bırakma)
+                if (newPfp) updateData.photoURL = newPfp;
+                if (newBanner) updateData.bannerURL = newBanner;
+                
+                await updateDoc(doc(db, 'users', auth.currentUser.uid), updateData);
 
                 showToast("Profil başarıyla güncellendi!", "success");
                 document.getElementById('profile-edit-mode').classList.add('hidden');
@@ -1060,9 +1077,11 @@
 
                 // Anlık UI Güncellemesi
                 document.getElementById('current-user-name').innerText = newName;
-                document.getElementById('current-user-avatar').src = newPfp || `https://ui-avatars.com/api/?name=${newName}`;
+                if (newPfp) {
+                    document.getElementById('current-user-avatar').src = newPfp;
+                    document.getElementById('profile-modal-pfp').src = newPfp;
+                }
                 
-                // app.js içindeki profil yükleme fonksiyonunu tetikle
                 if (window.loadUserProfile) window.loadUserProfile(auth.currentUser.uid);
             } catch (err) {
                 showToast("Güncelleme hatası: " + err.message, "error");
@@ -1071,45 +1090,7 @@
             }
         };
 
-        // PROFILE & BANNER FILE HANDLERS
-        const handleFileUpload = (inputId, displayId) => {
-            const input = document.getElementById(inputId);
-            input.onchange = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                try {
-                    const { db, auth } = await import('./firebase.config.js');
-                    const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
-                    
-                    let isPremium = false;
-                    if (auth.currentUser) {
-                        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-                        isPremium = userDoc.exists() && userDoc.data().isPremium;
-                    }
-
-                    // Storage olmadığı için limitleri Firestore Base64 bellek sınırlarına (%33 şişer) uydurduk:
-                    // 1MB Firestore kapasitesi -> Max 700 KB (Premium)
-                    const maxSize = isPremium ? 700 * 1024 : 150 * 1024;
-                    if (file.size > maxSize) {
-                        return showToast(isPremium ? "Dosya boyutu yüksek! (Max 700KB)" : "Boyut çok büyük (Max 150KB). Kaliteli GIF'ler için (700KB) Premium'a geç!", "error");
-                    }
-
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        document.getElementById(displayId).value = event.target.result;
-                        showToast("Görsel hazır! Kaydet butonuna basmayı unutma.", "success");
-                    };
-                    reader.readAsDataURL(file);
-                } catch (err) {
-                    console.error("Dosya okuma hatası:", err);
-                    showToast("Dosya okunamadı.", "error");
-                }
-            };
-        };
-
-        handleFileUpload('banner-file-input', 'edit-profile-banner-input');
-        handleFileUpload('pfp-file-input', 'edit-profile-pfp-input');
+        // Emoji Picker Toggle (Yerel Sayfa İşlevi)
 
         // Emoji Picker Toggle (Yerel Sayfa İşlevi)
         const emojiBtn = document.getElementById('emoji-btn');

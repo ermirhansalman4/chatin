@@ -3535,6 +3535,9 @@ const openCropper = (file, aspect, callback) => {
     reader.onload = (e) => {
         image.src = e.target.result;
         modal.classList.remove('hidden');
+        
+        // Yeni modal geldiği için ikonları yenile
+        if (window.lucide) window.lucide.createIcons();
 
         if (activeCropper) activeCropper.destroy();
         activeCropper = new Cropper(image, {
@@ -3600,20 +3603,31 @@ const handleImageUpload = (inputId, aspect, path, onComplete) => {
 // Hook up all upload inputs
 handleImageUpload('pfp-file-input', 1, 'profiles', async (url) => {
     const user = auth.currentUser;
-    // Base64 çok uzun olduğu için Firebase Auth'a yazamıyoruz, sadece Firestore'a yaz
+    if (!user) return;
+
+    // 1. Veritabanını güncelle
     await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
-    // Ayarlar panelindeki önizlemeyi güncelle
-    const pfpPreview = document.getElementById('settings-pfp-preview');
-    if (pfpPreview) pfpPreview.src = url;
-    // Profil modaldaki fotoğrafı güncelle
-    const profileModalPfp = document.getElementById('profile-modal-pfp');
-    if (profileModalPfp) profileModalPfp.src = url;
-    // Kullanıcı durum çubuğundaki avatarı güncelle
-    const userBarAvatar = document.getElementById('user-bar-avatar');
-    if (userBarAvatar) userBarAvatar.src = url;
-    // Sayfadaki tüm bu kullanıcıya ait avatarları güncelle
+    
+    // 2. Modaldaki metin kutusunu güncelle (Kaydet'e basınca çakışmasın)
+    const editInput = document.getElementById('edit-profile-pfp-input');
+    if (editInput) editInput.value = url;
+
+    // 3. Tüm önizlemeleri güncelle
+    const previews = [
+        'settings-pfp-preview',
+        'profile-modal-pfp',
+        'user-bar-avatar',
+        'current-user-avatar'
+    ];
+    previews.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.src = url;
+    });
+
+    // 4. Mesajlardaki avatarları güncelle
     document.querySelectorAll(`img[data-uid="${user.uid}"]`).forEach(img => img.src = url);
-    showToast('Profil fotoğrafın güncellendi! ✨', 'success');
+    
+    showToast('Profil fotoğrafın galaksiye yüklendi! ✨', 'success');
 });
 
 handleImageUpload('banner-file-input', 3/1, 'banners', async (url) => {
