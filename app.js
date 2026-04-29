@@ -1914,7 +1914,9 @@ const renderMemberItem = async (data, serverId, ownerUid) => {
     const html = `
         <div class="member-item" data-uid="${data.uid}" style="cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; transition: 0.2s;">
             <div style="position: relative;">
-                <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" alt="u" style="width: 32px; height: 32px; border-radius: 50%;">
+                <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" 
+                     data-uid="${data.uid}" 
+                     alt="u" style="width: 32px; height: 32px; border-radius: 50%;">
             </div>
             <span style="font-size: 14px; font-weight: 500; flex: 1; color: ${nameColor};">${data.username}</span>
             ${isOwner ? `<i data-lucide="crown" style="width: 14px; color: gold;" title="Sunucu Sahibi"></i>` : ''}
@@ -1947,8 +1949,15 @@ auth.onAuthStateChanged(async (user) => {
         // Rehberi sadece giriş yapıldığında başlat
         setTimeout(() => startTour(), 2000);
 
-        // Kullanıcıyı Firestore'a senkronize et
-        await syncUserToFirestore(user);
+        // UI Güncelle: Alt bar avatarı ve UID tanımlama
+        const mainAvatar = document.getElementById('current-user-avatar');
+        if (mainAvatar) {
+            mainAvatar.src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=random`;
+            mainAvatar.dataset.uid = user.uid;
+        }
+        const mainName = document.getElementById('current-user-name');
+        if (mainName) mainName.innerText = user.displayName || "Pilot";
+
         initGlobalDMListener();
 
         // ADMIN KONTROLÜ (SADECE SİZİN İÇİN)
@@ -3612,21 +3621,17 @@ handleImageUpload('pfp-file-input', 1, 'profiles', async (url) => {
     const editInput = document.getElementById('edit-profile-pfp-input');
     if (editInput) editInput.value = url;
 
-    // 3. Tüm önizlemeleri güncelle
-    const previews = [
-        'settings-pfp-preview',
-        'profile-modal-pfp',
-        'user-bar-avatar',
-        'current-user-avatar'
-    ];
-    previews.forEach(id => {
+    // 3. Sayfadaki bu kullanıcıya ait TÜM fotoğrafları bul ve güncelle
+    document.querySelectorAll(`img[data-uid="${user.uid}"]`).forEach(img => {
+        img.src = url;
+    });
+
+    // 4. ID bazlı özel alanları da garantiye al
+    ['settings-pfp-preview', 'profile-modal-pfp', 'current-user-avatar'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.src = url;
     });
 
-    // 4. Mesajlardaki avatarları güncelle
-    document.querySelectorAll(`img[data-uid="${user.uid}"]`).forEach(img => img.src = url);
-    
     showToast('Profil fotoğrafın galaksiye yüklendi! ✨', 'success');
 });
 
