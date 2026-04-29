@@ -3614,8 +3614,13 @@ handleImageUpload('pfp-file-input', 1, 'profiles', async (url) => {
     const user = auth.currentUser;
     if (!user) return;
 
-    // 1. Veritabanını güncelle
+    // 1. Ana kullanıcı dökümanını güncelle
     await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
+
+    // 2. Eğer bir sunucudaysak, o sunucudaki üye kaydını da güncelle
+    if (currentServerId) {
+        await updateDoc(doc(db, 'servers', currentServerId, 'members', user.uid), { photoURL: url }).catch(() => {});
+    }
     
     // 2. Modaldaki metin kutusunu güncelle (Kaydet'e basınca çakışmasın)
     const editInput = document.getElementById('edit-profile-pfp-input');

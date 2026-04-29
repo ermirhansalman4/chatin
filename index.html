@@ -1070,6 +1070,13 @@
                 
                 await updateDoc(doc(db, 'users', auth.currentUser.uid), updateData);
 
+                // SUNUCUDAKİ ÜYE BİLGİSİNİ DE GÜNCELLE (ÜYE LİSTESİ İÇİN)
+                if (window.currentServerId) {
+                    const memberUpdate = { username: newName };
+                    if (newPfp) memberUpdate.photoURL = newPfp;
+                    await updateDoc(doc(db, 'servers', window.currentServerId, 'members', auth.currentUser.uid), memberUpdate).catch(() => {});
+                }
+
                 showToast("Profil başarıyla güncellendi!", "success");
                 document.getElementById('profile-edit-mode').classList.add('hidden');
                 document.getElementById('profile-view-mode').classList.remove('hidden');
