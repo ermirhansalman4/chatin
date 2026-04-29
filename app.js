@@ -3551,14 +3551,25 @@ const handleImageUpload = (inputId, aspect, path, onComplete) => {
 
         openCropper(file, aspect, async (blob) => {
             try {
-                showToast("Görsel yükleniyor...", "info");
-                const storageRef = ref(storage, `${path}/${Date.now()}.jpg`);
-                const snapshot = await uploadBytesResumable(storageRef, blob);
-                const url = await getDownloadURL(snapshot.ref);
-                onComplete(url);
-                showToast("Görsel başarıyla güncellendi! ✨", "success");
+                showToast("Görsel işleniyor...", "info");
+
+                // Storage yerine Base64 kullan (ücretsiz, CORS yok)
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    const base64url = ev.target.result;
+
+                    // 1MB sınırı kontrolü (Firestore döküman limiti için)
+                    if (base64url.length > 900000) {
+                        showToast("Görsel çok büyük! Daha küçük bir resim seç.", "error");
+                        return;
+                    }
+
+                    onComplete(base64url);
+                    showToast("Görsel başarıyla güncellendi! ✨", "success");
+                };
+                reader.readAsDataURL(blob);
             } catch (err) {
-                showToast("Yükleme hatası: " + err.message, "error");
+                showToast("İşlem hatası: " + err.message, "error");
             }
         });
     };
@@ -3587,3 +3598,4 @@ handleImageUpload('server-banner-file', 2/1, 'server_banners', async (url) => {
     if (!currentServerId) return;
     await updateDoc(doc(db, 'servers', currentServerId), { bannerURL: url });
 });
+
