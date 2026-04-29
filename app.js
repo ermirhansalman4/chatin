@@ -1922,6 +1922,9 @@ auth.onAuthStateChanged(async (user) => {
         listenToFriends();
         listenToFriendRequests();
 
+        // Rehberi sadece giriş yapıldığında başlat
+        setTimeout(() => startTour(), 2000);
+
         // Kullanıcıyı Firestore'a senkronize et
         await syncUserToFirestore(user);
         initGlobalDMListener();
@@ -3038,6 +3041,9 @@ const renderTourStep = () => {
 
     if (!card || !body || !nextBtn || !overlay) return;
 
+    const titleSpan = document.querySelector(".wizard-header span");
+    if (titleSpan) titleSpan.innerText = step.title;
+
     body.innerHTML = step.body;
     nextBtn.innerText = currentTourStep === tourSteps.length - 1 ? "Galaksiyi Keşfet!" : "Devam Et";
 
@@ -3111,8 +3117,6 @@ const completeTour = () => {
     localStorage.setItem("chatin-tour-completed", "true");
     showToast("Rehber tamamlandı. İyi uçuşlar Pilot! 🚀", "success");
 };
-
-setTimeout(startTour, 4000);
 
 // --- DISCOVER SERVERS LOGIC ---
 let currentDiscoverCategory = 'all';
