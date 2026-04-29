@@ -9,6 +9,9 @@
     <link rel="icon" href="logo.jpg" type="image/jpeg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <!-- THREE.JS FOR 3D UNIVERSE -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
     <link rel="stylesheet" href="layout.css">
     <style>
         /* Server Settings Modal */
@@ -426,9 +429,11 @@
 
     <!-- PROFILE MODAL -->
     <div id="profile-modal-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 7000; display: flex; align-items: center; justify-content: center;">
-        <div class="settings-card" id="profile-card" style="width: 380px; text-align: center; position: relative;">
-            <div id="profile-view-mode" style="text-align: left;">
-                <div id="profile-modal-banner" class="profile-banner"></div>
+        <div class="profile-card" id="profile-view-mode" style="width: 420px; background: #05060f; border: 1px solid var(--border-gold); border-radius: 24px; overflow: hidden; position: relative;">
+            <!-- Animated Nebula Background for Profile -->
+            <div id="profile-nebula-bg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.3; pointer-events: none;"></div>
+            
+            <div id="profile-modal-banner" style="height: 140px; background-size: cover; background-position: center; position: relative; z-index: 1;"></div>
                 <div style="display: flex; align-items: flex-end; gap: 20px; margin-bottom: 24px; position: relative; z-index: 2; margin-top: -60px; padding-left: 10px;">
                     <img id="profile-modal-pfp" src="" style="width: 100px; height: 100px; border-radius: 50%; border: 4px solid #05060f; box-shadow: 0 0 30px rgba(0,0,0,0.5); object-fit: cover; background: #000;">
                     <div style="flex: 1; padding-bottom: 8px;">
@@ -535,6 +540,44 @@
                 <p><strong>4. Gizlilik:</strong> Verileriniz şifreli olarak galaktik veri tabanımızda saklanır.</p>
             </div>
             <button class="auth-btn" style="margin-top: 24px;" onclick="document.getElementById('tos-modal').classList.add('hidden')">ANLADIM</button>
+        </div>
+    </div>
+
+    <!-- DISCOVER SERVERS OVERLAY (3D UNIVERSE) -->
+    <div id="discover-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; display: flex; flex-direction: column; overflow: hidden;">
+        <!-- 3D Canvas Container -->
+        <div id="universe-canvas-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
+
+        <!-- UI Elements Overlayed on 3D -->
+        <div style="position: relative; z-index: 10; display: flex; flex-direction: column; height: 100%; pointer-events: none;">
+            <div style="padding: 30px; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); pointer-events: auto;">
+                <div>
+                    <h1 style="color: var(--brand-color); margin: 0; font-size: 32px; font-weight: 800; text-shadow: 0 0 20px rgba(255,215,0,0.5);">SUNUCU GALAKSİSİ</h1>
+                    <p style="color: var(--text-secondary); margin: 0;">Keşfetmek için sürükle, katılmak için gezegenlere tıkla</p>
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-gold); border-radius: 20px; padding: 10px 20px; display: flex; align-items: center; gap: 10px;">
+                        <i data-lucide="search" style="width: 18px; color: gold;"></i>
+                        <input type="text" id="discover-search-3d" placeholder="Gezegen ara..." style="background: transparent; border: none; color: white; outline: none; width: 200px;">
+                    </div>
+                    <button class="auth-btn" id="close-discover-3d-btn" style="background: rgba(255,0,0,0.2); border-color: #ff4444; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0;">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Planet Detail Box -->
+            <div id="planet-detail-box" class="hidden" style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); background: rgba(5,6,15,0.9); border: 1px solid var(--border-gold); border-radius: 24px; padding: 30px; width: 400px; backdrop-filter: blur(20px); pointer-events: auto; box-shadow: 0 0 50px rgba(255,215,0,0.2);">
+                <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 20px;">
+                    <img id="planet-detail-logo" src="" style="width: 80px; height: 80px; border-radius: 50%; border: 2px solid gold;">
+                    <div>
+                        <h2 id="planet-detail-name" style="color: #fff; margin: 0;">Sunucu Adı</h2>
+                        <p id="planet-detail-members" style="color: gold; margin: 0; font-size: 14px;">0 Üye</p>
+                    </div>
+                </div>
+                <p id="planet-detail-desc" style="color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5;">Sunucu açıklaması burada yer alacak.</p>
+                <button id="join-planet-btn" class="auth-btn" style="width: 100%; font-size: 16px; font-weight: 800;">GALAKSİYE İNİŞ YAP</button>
+            </div>
         </div>
     </div>
 

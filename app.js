@@ -3655,3 +3655,189 @@ handleImageUpload('server-banner-file', 2/1, 'server_banners', async (url) => {
     await updateDoc(doc(db, 'servers', currentServerId), { bannerURL: url });
 });
 
+// --- 3D UNIVERSE (SERVER DISCOVERY) ---
+let universeScene, universeCamera, universeRenderer, universeControls;
+let planets = [];
+let isUniverseInitialized = false;
+
+const init3DUniverse = async () => {
+    if (isUniverseInitialized) return;
+    
+    const container = document.getElementById('universe-canvas-container');
+    if (!container) return;
+
+    universeScene = new THREE.Scene();
+    universeCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    universeCamera.position.z = 400;
+
+    universeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    universeRenderer.setSize(window.innerWidth, window.innerHeight);
+    universeRenderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(universeRenderer.domElement);
+
+    universeControls = new THREE.OrbitControls(universeCamera, universeRenderer.domElement);
+    universeControls.enableDamping = true;
+    universeControls.dampingFactor = 0.05;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    universeScene.add(ambientLight);
+
+    const pointLight = new THREE.PointLight(0xffd700, 2);
+    pointLight.position.set(200, 200, 200);
+    universeScene.add(pointLight);
+
+    const starGeometry = new THREE.BufferGeometry();
+    const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5 });
+    const starVertices = [];
+    for (let i = 0; i < 10000; i++) {
+        const x = (Math.random() - 0.5) * 2000;
+        const y = (Math.random() - 0.5) * 2000;
+        const z = (Math.random() - 0.5) * 2000;
+        starVertices.push(x, y, z);
+    }
+    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+    universeScene.add(new THREE.Points(starGeometry, starMaterial));
+
+    // LOAD SERVERS AS PLANETS
+    const serversSnap = await getDocs(query(collection(db, 'servers'), where('isPublic', '==', true)));
+    let index = 0;
+    
+    // Eğer hiç sunucu yoksa bir tane "DEMO" gezegeni ekle
+    if (serversSnap.empty) {
+        addPlanet({ name: "Chatin Merkez", description: "Burası ana galaksi merkezi! Henüz halka açık sunucu yok.", memberCount: 999, logoURL: "logo.jpg" }, "demo-0", 0);
+    }
+
+    for (const serverDoc of serversSnap.docs) {
+        addPlanet({ id: serverDoc.id, ...serverDoc.data() }, serverDoc.id, index);
+        index++;
+    }
+
+    function addPlanet(data, id, idx) {
+        const geometry = new THREE.SphereGeometry(25, 32, 32);
+        let material;
+        if (data.logoURL) {
+            const texture = new THREE.TextureLoader().load(data.logoURL);
+            material = new THREE.MeshStandardMaterial({ map: texture, metalness: 0.5, roughness: 0.5 });
+        } else {
+            material = new THREE.MeshStandardMaterial({ color: 0xc5a059, metalness: 0.7, roughness: 0.2 });
+        }
+        const planet = new THREE.Mesh(geometry, material);
+        const angle = idx * 0.8;
+        const radius = 150 + idx * 40;
+        planet.position.set(Math.cos(angle) * radius, (Math.random() - 0.5) * 100, Math.sin(angle) * radius);
+        planet.userData = { id, ...data };
+        planets.push(planet);
+        universeScene.add(planet);
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const onMouseClick = (event) => {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, universeCamera);
+        const intersects = raycaster.intersectObjects(planets);
+        if (intersects.length > 0) {
+            showPlanetDetails(intersects[0].object.userData);
+        } else {
+            document.getElementById('planet-detail-box')?.classList.add('hidden');
+        }
+    };
+    window.addEventListener('click', onMouseClick);
+
+    const animate = () => {
+        requestAnimationFrame(animate);
+        planets.forEach(p => p.rotation.y += 0.01);
+        universeControls.update();
+        universeRenderer.render(universeScene, universeCamera);
+    };
+    animate();
+    isUniverseInitialized = true;
+};
+
+const showPlanetDetails = (data) => {
+    const box = document.getElementById('planet-detail-box');
+    if (!box) return;
+    document.getElementById('planet-detail-logo').src = data.logoURL || `https://ui-avatars.com/api/?name=${data.name}&background=c5a059&color=fff`;
+    document.getElementById('planet-detail-name').innerText = data.name;
+    document.getElementById('planet-detail-members').innerText = `${data.memberCount || 0} Üye`;
+    document.getElementById('planet-detail-desc').innerText = data.description || "Bu galaksi henüz keşfedilmeyi bekliyor...";
+    document.getElementById('join-planet-btn').onclick = () => {
+        joinServer(data.id);
+        document.getElementById('discover-overlay').classList.add('hidden');
+    };
+    box.classList.remove('hidden');
+};
+
+document.getElementById('explore-btn')?.addEventListener('click', () => {
+    document.getElementById('discover-overlay').classList.remove('hidden');
+    init3DUniverse();
+});
+
+document.getElementById('close-discover-3d-btn')?.addEventListener('click', () => {
+    document.getElementById('discover-overlay').classList.add('hidden');
+});
+
+window.addEventListener('resize', () => {
+    if (universeCamera && universeRenderer) {
+        universeCamera.aspect = window.innerWidth / window.innerHeight;
+        universeCamera.updateProjectionMatrix();
+        universeRenderer.setSize(window.innerWidth, window.innerHeight);
+    }
+});
+
+// --- ENHANCED USER PROFILE ---
+let profileNebulaScene, profileNebulaCamera, profileNebulaRenderer;
+
+const initProfileNebula = () => {
+    const container = document.getElementById('profile-nebula-bg');
+    if (!container || profileNebulaRenderer) return;
+    profileNebulaScene = new THREE.Scene();
+    profileNebulaCamera = new THREE.PerspectiveCamera(75, 420 / 600, 0.1, 1000);
+    profileNebulaCamera.position.z = 30;
+    profileNebulaRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    profileNebulaRenderer.setSize(420, 600);
+    container.appendChild(profileNebulaRenderer.domElement);
+    const geometry = new THREE.SphereGeometry(20, 64, 64);
+    const texture = new THREE.TextureLoader().load('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&q=80&w=800');
+    const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+    const nebula = new THREE.Mesh(geometry, material);
+    profileNebulaScene.add(nebula);
+    const animate = () => {
+        requestAnimationFrame(animate);
+        nebula.rotation.y += 0.002;
+        profileNebulaRenderer.render(profileNebulaScene, profileNebulaCamera);
+    };
+    animate();
+};
+
+window.openUserProfile = async (userData) => {
+    const modal = document.getElementById('profile-modal-overlay');
+    const nameEl = document.getElementById('profile-modal-name');
+    const bioEl = document.getElementById('profile-modal-bio');
+    const pfpEl = document.getElementById('profile-modal-pfp');
+    const bannerEl = document.getElementById('profile-modal-banner');
+    const badgeSpot = document.getElementById('premium-badge-spot');
+
+    nameEl.classList.remove('neon-glow-text');
+    bannerEl.classList.remove('premium-glitch');
+    badgeSpot.innerHTML = '';
+
+    const uSnap = await getDoc(doc(db, 'users', userData.uid));
+    const fullData = uSnap.exists() ? uSnap.data() : userData;
+
+    nameEl.innerText = fullData.username;
+    bioEl.innerText = fullData.bio || "Bu kullanıcı hakkında henüz bilgi yok.";
+    pfpEl.src = fullData.photoURL || `https://ui-avatars.com/api/?name=${fullData.username}&background=random`;
+    bannerEl.style.backgroundImage = fullData.bannerURL ? `url(${fullData.bannerURL})` : 'none';
+
+    if (fullData.isPremium) {
+        nameEl.classList.add('neon-glow-text');
+        bannerEl.classList.add('premium-glitch');
+        badgeSpot.innerHTML = `<i data-lucide="gem" style="width: 20px; color: gold;" title="Premium Üye"></i>`;
+        initProfileNebula();
+        lucide.createIcons();
+    }
+    modal.classList.remove('hidden');
+};
