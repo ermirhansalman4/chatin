@@ -3578,10 +3578,12 @@ const handleImageUpload = (inputId, aspect, path, onComplete) => {
 // Hook up all upload inputs
 handleImageUpload('pfp-file-input', 1, 'profiles', async (url) => {
     const user = auth.currentUser;
-    await updateProfile(user, { photoURL: url });
+    // Base64 çok uzun olduğu için Firebase Auth'a yazamıyoruz, sadece Firestore'a yaz
     await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
     const pfpPreview = document.getElementById('settings-pfp-preview');
     if (pfpPreview) pfpPreview.src = url;
+    // Sayfadaki tüm profil fotoğraflarını güncelle
+    document.querySelectorAll(`img[data-uid="${user.uid}"]`).forEach(img => img.src = url);
 });
 
 handleImageUpload('banner-file-input', 3/1, 'banners', async (url) => {
