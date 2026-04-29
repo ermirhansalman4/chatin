@@ -1078,6 +1078,7 @@ export const createServer = async (data) => {
         requiresApproval: data.requiresApproval || false,
         inviteCode: serverRef.id.substring(0, 6).toUpperCase(),
         ownerUid: user.uid,
+        logoURL: data.logoURL || "",
         createdAt: Date.now(),
         members: [user.uid],
         memberCount: 1,
@@ -2062,6 +2063,12 @@ document.getElementById('server-header-btn').onclick = async () => {
             document.getElementById('discovery-atmosphere-select').value = serverData.atmosphere || 'default';
             document.getElementById('server-banner-url').value = serverData.bannerURL || '';
             document.getElementById('server-logo-url').value = serverData.logoURL || '';
+            
+            // Önizlemeleri Yükle
+            const logoPreview = document.getElementById('settings-server-logo-preview');
+            const bannerPreview = document.getElementById('settings-server-banner-preview');
+            if (logoPreview) logoPreview.src = serverData.logoURL || '';
+            if (bannerPreview) bannerPreview.style.backgroundImage = serverData.bannerURL ? `url(${serverData.bannerURL})` : 'none';
 
             // Sahibi Premium mu kontrol et (Temalar için)
             const ownerSnap = await getDoc(doc(db, 'users', serverData.ownerUid));
@@ -2079,29 +2086,7 @@ document.getElementById('server-header-btn').onclick = async () => {
     }
 };
 
-// BANNER & LOGO UPLOAD HANDLERS
-const setupImageUpload = (fileId, urlId, label) => {
-    const fileInput = document.getElementById(fileId);
-    if (!fileInput) return;
-    fileInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        // Max 500KB since it's Firestore Base64
-        if (file.size > 500 * 1024) {
-            return showToast("Görsel boyutu çok yüksek (Max 500KB)!", "error");
-        }
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            document.getElementById(urlId).value = event.target.result;
-            showToast(`${label} hazır! Kaydet butonuna basmayı unutma.`, "success");
-        };
-        reader.readAsDataURL(file);
-    };
-};
-setupImageUpload('server-banner-file', 'server-banner-url', 'Banner');
-setupImageUpload('server-logo-file', 'server-logo-url', 'Logo');
+// BANNER & LOGO UPLOAD HANDLERS (Consolidated in handleImageUpload at the bottom)
 
 // KEŞFET AYARLARINI KAYDET
 document.getElementById('save-discovery-settings').onclick = async () => {
@@ -2597,6 +2582,8 @@ document.addEventListener('click', async (e) => {
         const publicCheck = document.getElementById('server-public-checkbox');
         const approvalCheck = document.getElementById('server-approval-checkbox');
 
+        const logoUrlInput = document.getElementById('new-server-logo-url');
+
         const name = nameInput.value.trim();
         if (!name) return showToast("Sunucu adı boş olamaz!", "error");
 
@@ -2606,13 +2593,17 @@ document.addEventListener('click', async (e) => {
                 category: catInput.value,
                 description: descInput.value.trim(),
                 isPublic: publicCheck.checked,
-                requiresApproval: approvalCheck.checked
+                requiresApproval: approvalCheck.checked,
+                logoURL: logoUrlInput.value || ""
             });
             document.getElementById('create-server-modal').classList.add('hidden');
             
             // Clear fields
             nameInput.value = '';
             descInput.value = '';
+            logoUrlInput.value = '';
+            document.getElementById('new-server-logo-preview').innerHTML = '<i data-lucide="image" style="width: 20px; color: var(--text-secondary);"></i>';
+            if (window.lucide) window.lucide.createIcons();
             
             showToast("Güneş Sistemi'nde yeni bir sunucu doğdu!", "success");
             listenToServers(); // Listeyi yenile
@@ -3647,12 +3638,46 @@ handleImageUpload('banner-file-input', 3/1, 'banners', async (url) => {
 
 handleImageUpload('server-logo-file', 1, 'server_logos', async (url) => {
     if (!currentServerId) return;
+    
+    // Hidden Input ve Preview Güncelle
+    document.getElementById('server-logo-url').value = url;
+    const preview = document.getElementById('settings-server-logo-preview');
+    if (preview) preview.src = url;
+
     await updateDoc(doc(db, 'servers', currentServerId), { logoURL: url });
+    
+    // Update Sidebar
+    const icon = document.querySelector(`.server-icon[data-id="${currentServerId}"] img`);
+    if (icon) icon.src = url;
+
+    // Update 3D Planet
+    const planet = planets.find(p => p.userData.id === currentServerId);
+    if (planet && window.THREE) {
+        const texture = new window.THREE.TextureLoader().load(url);
+        planet.material.map = texture;
+        planet.material.needsUpdate = true;
+    }
+
+    showToast('Sunucu logosu galaksiye yayıldı! 🪐', 'success');
 });
 
 handleImageUpload('server-banner-file', 2/1, 'server_banners', async (url) => {
     if (!currentServerId) return;
+
+    // Hidden Input ve Preview Güncelle
+    document.getElementById('server-banner-url').value = url;
+    const preview = document.getElementById('settings-server-banner-preview');
+    if (preview) preview.style.backgroundImage = `url(${url})`;
+
     await updateDoc(doc(db, 'servers', currentServerId), { bannerURL: url });
+    showToast('Sunucu bannerı güncellendi! ✨', 'success');
+});
+
+handleImageUpload('new-server-logo-file', 1, 'server_logos', async (url) => {
+    document.getElementById('new-server-logo-url').value = url;
+    const preview = document.getElementById('new-server-logo-preview');
+    preview.innerHTML = `<img src="${url}" style="width: 100%; height: 100%; object-fit: cover;">`;
+    showToast('Logo seçildi! ✨', 'success');
 });
 
 // --- 3D UNIVERSE (SERVER DISCOVERY) ---
@@ -3666,6 +3691,12 @@ const init3DUniverse = async () => {
     const container = document.getElementById('universe-canvas-container');
     if (!container) return;
 
+    const THREE = window.THREE;
+    if (!THREE) {
+        showToast("Hata: 3D Motoru (Three.js) bulunamadı!", "error");
+        return;
+    }
+
     universeScene = new THREE.Scene();
     universeCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
     universeCamera.position.z = 400;
@@ -3675,59 +3706,108 @@ const init3DUniverse = async () => {
     universeRenderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(universeRenderer.domElement);
 
-    universeControls = new THREE.OrbitControls(universeCamera, universeRenderer.domElement);
-    universeControls.enableDamping = true;
-    universeControls.dampingFactor = 0.05;
+    // CONTROLS
+    if (THREE.OrbitControls) {
+        universeControls = new THREE.OrbitControls(universeCamera, universeRenderer.domElement);
+        universeControls.enableDamping = true;
+        universeControls.dampingFactor = 0.05;
+    }
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    // AMBIENT LIGHT
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     universeScene.add(ambientLight);
 
-    const pointLight = new THREE.PointLight(0xffd700, 2);
-    pointLight.position.set(200, 200, 200);
-    universeScene.add(pointLight);
+    // SUN LIGHT (GALACTIC CENTER)
+    const sunLight = new THREE.PointLight(0xffd700, 2.5, 1000);
+    sunLight.position.set(0, 0, 0);
+    universeScene.add(sunLight);
+    
+    // BACK LIGHT
+    const backLight = new THREE.PointLight(0x4444ff, 1.5, 1000);
+    backLight.position.set(200, 100, -200);
+    universeScene.add(backLight);
 
+    // STARFIELD
     const starGeometry = new THREE.BufferGeometry();
-    const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5 });
+    const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, transparent: true, opacity: 0.8 });
     const starVertices = [];
-    for (let i = 0; i < 10000; i++) {
-        const x = (Math.random() - 0.5) * 2000;
-        const y = (Math.random() - 0.5) * 2000;
-        const z = (Math.random() - 0.5) * 2000;
+    for (let i = 0; i < 15000; i++) {
+        const x = (Math.random() - 0.5) * 3000;
+        const y = (Math.random() - 0.5) * 3000;
+        const z = (Math.random() - 0.5) * 3000;
         starVertices.push(x, y, z);
     }
     starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
     universeScene.add(new THREE.Points(starGeometry, starMaterial));
 
-    // LOAD SERVERS AS PLANETS
-    const serversSnap = await getDocs(query(collection(db, 'servers'), where('isPublic', '==', true)));
-    let index = 0;
-    
-    // Eğer hiç sunucu yoksa bir tane "DEMO" gezegeni ekle
-    if (serversSnap.empty) {
-        addPlanet({ name: "Chatin Merkez", description: "Burası ana galaksi merkezi! Henüz halka açık sunucu yok.", memberCount: 999, logoURL: "logo.jpg" }, "demo-0", 0);
-    }
+    const planetTextures = [
+        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/mars_1k_color.jpg', // Mars
+        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg', // Moon
+        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg', // Earth
+        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_lights_2048.png', // Night Earth
+        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/carbon/fair_clouds_2k.png' // Venus-like
+    ];
 
-    for (const serverDoc of serversSnap.docs) {
-        addPlanet({ id: serverDoc.id, ...serverDoc.data() }, serverDoc.id, index);
-        index++;
+    function createTextLabel(text) {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = 512;
+        canvas.height = 128;
+        context.font = 'Bold 36px Outfit, sans-serif';
+        context.fillStyle = 'rgba(255,255,255,0.9)';
+        context.textAlign = 'center';
+        context.shadowColor = 'rgba(0,0,0,1)';
+        context.shadowBlur = 10;
+        context.fillText(text.toUpperCase(), 256, 60);
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(70, 17.5, 1);
+        sprite.position.y = 40;
+        return sprite;
     }
 
     function addPlanet(data, id, idx) {
-        const geometry = new THREE.SphereGeometry(25, 32, 32);
+        const geometry = new THREE.SphereGeometry(30, 64, 64);
+        const loader = new THREE.TextureLoader();
+        loader.setCrossOrigin('anonymous');
         let material;
         if (data.logoURL) {
-            const texture = new THREE.TextureLoader().load(data.logoURL);
-            material = new THREE.MeshStandardMaterial({ map: texture, metalness: 0.5, roughness: 0.5 });
+            const texture = loader.load(data.logoURL);
+            material = new THREE.MeshStandardMaterial({ 
+                map: texture, metalness: 0.4, roughness: 0.6,
+                emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.05
+            });
         } else {
-            material = new THREE.MeshStandardMaterial({ color: 0xc5a059, metalness: 0.7, roughness: 0.2 });
+            const randomTex = planetTextures[idx % planetTextures.length];
+            const texture = loader.load(randomTex);
+            material = new THREE.MeshStandardMaterial({ 
+                map: texture, metalness: 0.3, roughness: 0.8,
+                emissive: new THREE.Color(0x222222), emissiveIntensity: 0.1
+            });
         }
         const planet = new THREE.Mesh(geometry, material);
         const angle = idx * 0.8;
-        const radius = 150 + idx * 40;
-        planet.position.set(Math.cos(angle) * radius, (Math.random() - 0.5) * 100, Math.sin(angle) * radius);
+        const radius = 180 + idx * 55;
+        planet.position.set(Math.cos(angle) * radius, (Math.random() - 0.5) * 80, Math.sin(angle) * radius);
         planet.userData = { id, ...data };
+        const glowGeo = new THREE.SphereGeometry(32, 64, 64);
+        const glowMat = new THREE.MeshBasicMaterial({ color: 0x4444ff, transparent: true, opacity: 0.15, side: THREE.BackSide });
+        planet.add(new THREE.Mesh(glowGeo, glowMat));
+        planet.add(createTextLabel(data.name));
         planets.push(planet);
         universeScene.add(planet);
+    }
+
+    // LOAD SERVERS AS PLANETS
+    const serversSnap = await getDocs(query(collection(db, 'servers'), where('isPublic', '==', true)));
+    let index = 0;
+    if (serversSnap.empty) {
+        addPlanet({ name: "Chatin Merkez", description: "Burası ana galaksi merkezi! Henüz halka açık sunucu yok.", memberCount: 999, logoURL: "logo.png" }, "demo-0", 0);
+    }
+    for (const serverDoc of serversSnap.docs) {
+        addPlanet({ id: serverDoc.id, ...serverDoc.data() }, serverDoc.id, index);
+        index++;
     }
 
     const raycaster = new THREE.Raycaster();
@@ -3739,16 +3819,61 @@ const init3DUniverse = async () => {
         raycaster.setFromCamera(mouse, universeCamera);
         const intersects = raycaster.intersectObjects(planets);
         if (intersects.length > 0) {
-            showPlanetDetails(intersects[0].object.userData);
+            const clickedPlanet = intersects[0].object;
+            showPlanetDetails(clickedPlanet.userData);
+            
+            // --- CLICK TO MOVE NAVIGATION ---
+            targetLookAt.copy(clickedPlanet.position);
+            const offset = clickedPlanet.position.clone().normalize().multiplyScalar(clickedPlanet.position.length() + 100);
+            targetCamPos.copy(offset);
+            isNavigating = true;
         } else {
             document.getElementById('planet-detail-box')?.classList.add('hidden');
         }
     };
     window.addEventListener('click', onMouseClick);
 
+    // NAVIGATION SYSTEM
+    let targetLookAt = new THREE.Vector3(0, 0, 0);
+    let targetCamPos = new THREE.Vector3(0, 0, 400);
+    let isNavigating = false;
+
+    const searchInput = document.getElementById('discover-search-3d');
+    searchInput?.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        if (!query) return;
+
+        const foundPlanet = planets.find(p => p.userData.name.toLowerCase().includes(query));
+        if (foundPlanet) {
+            // Hedef Pozisyonları Belirle
+            targetLookAt.copy(foundPlanet.position);
+            
+            // Kamerayı gezegenin biraz önünde duracak şekilde ayarla
+            const offset = foundPlanet.position.clone().normalize().multiplyScalar(foundPlanet.position.length() + 80);
+            targetCamPos.copy(offset);
+            
+            isNavigating = true;
+            showPlanetDetails(foundPlanet.userData);
+        }
+    });
+
     const animate = () => {
         requestAnimationFrame(animate);
+        
+        // Gezegenleri Döndür
         planets.forEach(p => p.rotation.y += 0.01);
+        
+        // Yumuşak Kamera Navigasyonu (Lerp)
+        if (isNavigating) {
+            universeCamera.position.lerp(targetCamPos, 0.05);
+            universeControls.target.lerp(targetLookAt, 0.05);
+            
+            // Eğer hedefe çok yaklaştıysak navigasyonu durdur (OrbitControls devralır)
+            if (universeCamera.position.distanceTo(targetCamPos) < 1) {
+                isNavigating = false;
+            }
+        }
+
         universeControls.update();
         universeRenderer.render(universeScene, universeCamera);
     };
@@ -3771,7 +3896,23 @@ const showPlanetDetails = (data) => {
 };
 
 document.getElementById('explore-btn')?.addEventListener('click', () => {
-    document.getElementById('discover-overlay').classList.remove('hidden');
+    console.log("Explore button clicked!");
+    showToast("Galaksiye giriş yapılıyor... 🌌", "info");
+    
+    const overlay = document.getElementById('discover-overlay');
+    if (!overlay) {
+        showToast("Hata: Keşfet arayüzü bulunamadı!", "error");
+        return;
+    }
+    
+    overlay.classList.remove('hidden');
+    overlay.style.display = 'flex'; // Zorla göster
+    
+    if (typeof THREE === 'undefined') {
+        showToast("Hata: 3D Motoru yüklenemedi!", "error");
+        return;
+    }
+    
     init3DUniverse();
 });
 
@@ -3791,6 +3932,9 @@ window.addEventListener('resize', () => {
 let profileNebulaScene, profileNebulaCamera, profileNebulaRenderer;
 
 const initProfileNebula = () => {
+    const THREE = window.THREE;
+    if (!THREE) return;
+    
     const container = document.getElementById('profile-nebula-bg');
     if (!container || profileNebulaRenderer) return;
     profileNebulaScene = new THREE.Scene();
