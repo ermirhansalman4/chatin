@@ -36,6 +36,21 @@ import {
     onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
     signOut, updateProfile, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+
+// --- GLOBAL IMAGE ERROR HANDLER ---
+// Yüklenemeyen (eski Storage URL'leri, CORS engelli) tüm avatarlar için fallback
+document.addEventListener('error', (e) => {
+    if (e.target.tagName === 'IMG') {
+        const img = e.target;
+        // Sonsuz döngüyü önle
+        if (img.dataset.errored) return;
+        img.dataset.errored = 'true';
+        // Kullanıcı adından placeholder üret (varsa)
+        const name = img.alt || img.dataset.username || 'U';
+        img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random&color=fff&size=128`;
+    }
+}, true);
+
 // --- GLOBAL STATE ---
 let currentServerId = null;
 let currentServerName = "";
@@ -1240,16 +1255,23 @@ export const switchServer = async (serverId, serverData) => {
     document.getElementById('invite-box').classList.remove('hidden');
     document.getElementById('current-invite-code').innerText = `#${serverId.slice(0, 7)}`;
     
-    // Davet Butonu Mantığı
+    // Davet Butonu Mantığı - Sadece sunucu sahibine göster
     const copyInviteBtn = document.getElementById('copy-invite-btn');
     if (copyInviteBtn) {
-        copyInviteBtn.style.display = 'flex';
-        copyInviteBtn.onclick = (e) => {
-            e.stopPropagation();
-            const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${serverData.inviteCode || serverId}`;
-            navigator.clipboard.writeText(inviteUrl);
-            showToast("Galaktik davet linki kopyalandı! 🌌🔗", "success");
-        };
+        const isOwner = auth.currentUser && auth.currentUser.uid === serverData.ownerUid;
+        const isAdmin = await checkPermission('manage_channels');
+        
+        if (isOwner || isAdmin) {
+            copyInviteBtn.style.display = 'flex';
+            copyInviteBtn.onclick = (e) => {
+                e.stopPropagation();
+                const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${serverData.inviteCode || serverId}`;
+                navigator.clipboard.writeText(inviteUrl);
+                showToast("Galaktik davet linki kopyalandı! 🌌🔗", "success");
+            };
+        } else {
+            copyInviteBtn.style.display = 'none';
+        }
     }
 
     // --- PREMİUM PROMOSYON TETİKLEYİCİ ---
@@ -3580,10 +3602,18 @@ handleImageUpload('pfp-file-input', 1, 'profiles', async (url) => {
     const user = auth.currentUser;
     // Base64 çok uzun olduğu için Firebase Auth'a yazamıyoruz, sadece Firestore'a yaz
     await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
+    // Ayarlar panelindeki önizlemeyi güncelle
     const pfpPreview = document.getElementById('settings-pfp-preview');
     if (pfpPreview) pfpPreview.src = url;
-    // Sayfadaki tüm profil fotoğraflarını güncelle
+    // Profil modaldaki fotoğrafı güncelle
+    const profileModalPfp = document.getElementById('profile-modal-pfp');
+    if (profileModalPfp) profileModalPfp.src = url;
+    // Kullanıcı durum çubuğundaki avatarı güncelle
+    const userBarAvatar = document.getElementById('user-bar-avatar');
+    if (userBarAvatar) userBarAvatar.src = url;
+    // Sayfadaki tüm bu kullanıcıya ait avatarları güncelle
     document.querySelectorAll(`img[data-uid="${user.uid}"]`).forEach(img => img.src = url);
+    showToast('Profil fotoğrafın güncellendi! ✨', 'success');
 });
 
 handleImageUpload('banner-file-input', 3/1, 'banners', async (url) => {
