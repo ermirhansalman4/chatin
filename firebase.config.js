@@ -6,14 +6,12 @@ import { getDatabase } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-
 
 // Firebase Configuration provided by USER
 const firebaseConfig = {
-  apiKey: "AIzaSyDDqB8GUVKd5eCBErI2BXMJLU1ls_RwDak",
-  authDomain: "chatin-f3419.firebaseapp.com",
-  projectId: "chatin-f3419",
-  storageBucket: "chatin-f3419.firebasestorage.app",
-  messagingSenderId: "609174716770",
-  appId: "1:609174716770:web:42deb4a44b27aad31bec3b",
-  measurementId: "G-07BLMP1KV6",
-  databaseURL: "https://chatin-f3419-default-rtdb.asia-southeast1.firebasedatabase.app"
+  apiKey: "AIzaSyBJzU5PW0VgvHPRhcfDXZBWPFPV2Xak3W8",
+  authDomain: "chatin-3c6a5.firebaseapp.com",
+  projectId: "chatin-3c6a5",
+  storageBucket: "chatin-3c6a5.firebasestorage.app",
+  messagingSenderId: "130139862155",
+  appId: "1:130139862155:web:8966aaeba6ad443041108e"
 };
 
 // Initialize Firebase

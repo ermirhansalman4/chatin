@@ -67,12 +67,12 @@ const server = http.createServer((req, res) => {
   }
 
   const FB_CONFIG = JSON.stringify({
-    apiKey: "AIzaSyDDqB8GUVKd5eCBErI2BXMJLU1ls_RwDak",
-    authDomain: "chatin-f3419.firebaseapp.com",
-    projectId: "chatin-f3419",
-    storageBucket: "chatin-f3419.firebasestorage.app",
-    messagingSenderId: "609174716770",
-    appId: "1:609174716770:web:485e94df404dce84f004b3"
+    apiKey: "AIzaSyBJzU5PW0VgvHPRhcfDXZBWPFPV2Xak3W8",
+    authDomain: "chatin-3c6a5.firebaseapp.com",
+    projectId: "chatin-3c6a5",
+    storageBucket: "chatin-3c6a5.firebasestorage.app",
+    messagingSenderId: "130139862155",
+    appId: "1:130139862155:web:8966aaeba6ad443041108e"
   });
 
   // Init.json Yolu

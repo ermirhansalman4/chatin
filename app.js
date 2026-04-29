@@ -38,10 +38,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 // --- GLOBAL STATE ---
 let currentServerId = null;
-let currentServerName = null;
-let currentChannelId = null;
-let currentChannelType = 'text';
+let currentServerName = "";
 let currentServerOwnerUid = null;
+let currentChannelId = null;
+let currentMessageEffect = 'none'; // 'none', 'shooting-star', 'warp', 'cosmic-glow'
+let currentChannelType = 'text';
 let unsubscribeMessages = null;
 let unsubscribeServers = null;
 let unsubscribeChannels = null;
@@ -155,7 +156,10 @@ const renderSearchResults = (docs) => {
             <div style="display:flex; align-items:center; gap:12px;">
                 <img src="${userData.photoURL}" style="width:36px; height:36px; border-radius:50%; border: 1px solid var(--border-gold);">
                 <div style="display:flex; flex-direction:column;">
-                    <span style="font-weight:600; font-size:14px; color:white;">${userData.displayName}</span>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-weight:600; font-size:14px; color:white;">${userData.displayName}</span>
+                        ${userData.level ? `<span style="font-size: 9px; background: rgba(197, 160, 89, 0.1); color: var(--brand-color); padding: 1px 4px; border-radius: 4px; border: 0.5px solid var(--border-gold);">Lvl ${userData.level}</span>` : ''}
+                    </div>
                     <span style="font-size:11px; color:gray;">@${userData.username}</span>
                 </div>
             </div>
@@ -484,14 +488,23 @@ const renderMessage = (data, id) => {
             <div style="flex:1;">
                 <div style="display: flex; gap: 8px; align-items: baseline;">
                     <span class="msg-username" style="font-weight: bold; color: #fff; cursor: pointer;">
-                        ${data.username}
+                        ${data.username} 
+                        ${data.isBot ? '<span style="background: var(--brand-color); color: #000; font-size: 9px; padding: 1px 4px; border-radius: 4px; margin-left: 4px; font-weight: 900;">BOT</span>' : ''}
                     </span>
                     <span style="font-size: 12px; color: var(--text-secondary);">${time}</span>
+                    ${data.level ? `<span style="font-size: 10px; color: var(--brand-color); font-weight: 800; border: 1px solid var(--border-gold); padding: 0 4px; border-radius: 4px; margin-left: 4px;">LVL ${data.level}</span>` : ''}
                     ${data.isEdited ? '<span style="font-size: 10px; color: var(--text-secondary); italic;">(düzenlendi)</span>' : ''}
                 </div>
                 <div class="msg-body">
-                    <p class="${data.messageEffect ? 'effect-' + data.messageEffect : ''}" data-text="${data.text || ''}" style="color: #dcddde; margin-top: 2px; white-space: pre-wrap; word-break: break-word;">${data.text || ''}</p>
-                    ${data.fileURL ? `<img src="${data.fileURL}" class="media-message-img">` : ''}
+                    <p class="${data.effect ? 'msg-effect-' + data.effect : ''}" data-text="${data.text || ''}" style="color: #dcddde; margin-top: 2px; white-space: pre-wrap; word-break: break-word; ${data.isBot ? 'background: rgba(197, 160, 89, 0.05); padding: 10px; border-radius: 8px; border-left: 3px solid var(--brand-color);' : ''}">${data.text || ''}</p>
+                    ${data.fileURL ? `
+                        <div class="cargo-pod">
+                            <img src="${data.fileURL}" class="media-message-img">
+                            <div style="margin-top: 8px; font-size: 10px; color: var(--brand-color); font-weight: 800; display: flex; align-items: center; gap: 5px;">
+                                <i data-lucide="package-check" style="width: 12px;"></i> CARGO RECEIVED
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
                 ${reactionHtml}
             </div>
@@ -886,13 +899,23 @@ const handleChatMediaUpload = async (e) => {
     const reader = new FileReader();
     reader.onload = async (event) => {
         const base64Data = event.target.result;
+        
+        // Animasyonu IŞIK HIZINDA tetikle
+        const ship = document.createElement('div');
+        ship.className = 'cargo-ship-anim';
+        ship.style.cssText = "position:fixed; z-index:99999; top:45%; left:-150px; pointer-events:none;";
+        // Yeni, daha hzl ve güvenilir ikon
+        ship.innerHTML = '<img src="https://cdn-icons-png.flaticon.com/512/1356/1356479.png" style="width: 120px; filter: drop-shadow(0 0 15px #00ffff) blur(1px); transform: rotate(15deg);">';
+        document.body.appendChild(ship);
+        setTimeout(() => ship.remove(), 1500);
+
         try {
             if (isDMMode && currentDMRecipientId) {
                 await sendDM(base64Data, true);
             } else if (currentChannelId) {
                 await sendMessage(base64Data, true);
             }
-            showToast("Görsel gönderildi! 📸");
+            showToast("Kargo podu fırlatıldı! 🚀");
         } catch (err) {
             showToast("Görsel hatası: " + err.message, "error");
         }
@@ -925,7 +948,71 @@ export const sendMessage = async (content, isFile = false) => {
         msgData.text = content;
     }
 
-    await addDoc(collection(db, 'messages'), msgData);
+    if (currentMessageEffect !== 'none') {
+        msgData.effect = currentMessageEffect;
+    }
+
+    // --- GET CURRENT LEVEL ---
+    const user = auth.currentUser;
+    const userRef = doc(db, 'users', user.uid);
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+        msgData.level = userSnap.data().level || 1;
+    }
+
+    const docRef = await addDoc(collection(db, 'messages'), msgData);
+
+    // --- XP & LEVEL SYSTEM ---
+    if (userSnap.exists()) {
+        const userData = userSnap.data();
+        const currentXP = userData.xp || 0;
+        const currentLevel = userData.level || 1;
+        const newXP = currentXP + 10;
+        const nextLevelXP = currentLevel * 100;
+
+        if (newXP >= nextLevelXP) {
+            await updateDoc(userRef, { xp: 0, level: currentLevel + 1 });
+            showToast(`🚀 TEBRİKLER! Seviye Atladın: ${currentLevel + 1}`, "success");
+        } else {
+            await updateDoc(userRef, { xp: newXP });
+        }
+    }
+
+    // --- BOT COMMANDS ---
+    if (content.startsWith('/')) {
+        handleBotCommand(content, currentChannelId, user);
+    }
+};
+
+const handleBotCommand = async (cmd, channelId, user) => {
+    const command = cmd.toLowerCase().split(' ')[0];
+    let botMsg = "";
+
+    if (command === '/yardım') {
+        botMsg = `Merhaba **${user.displayName}**! Ben Galaktik Rehber. Sana şu komutlarla yardımcı olabilirim:\n\n` +
+                 `🌟 **/seviye** - Mevcut XP ve Seviyeni gösterir.\n` +
+                 `📜 **/kurallar** - Galaktik topluluk kurallarını listeler.\n` +
+                 `🌌 **/istatistik** - Evrenin güncel durumunu söyler.`;
+    } else if (command === '/kurallar') {
+        botMsg = `**GALAKTİK KURALLAR:**\n1. Diğer yolculara saygılı davran.\n2. Spam yaparak kara delik oluşturma.\n3. Kozmik barışı koru!`;
+    } else if (command === '/seviye') {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const d = userDoc.data();
+        botMsg = `🌟 **${user.displayName}**\n**Seviye:** ${d.level || 1}\n**XP:** ${d.xp || 0} / ${(d.level || 1) * 100}`;
+    }
+
+    if (botMsg) {
+        await addDoc(collection(db, 'messages'), {
+            channelId: channelId,
+            text: botMsg,
+            uid: 'galactic_guide_bot',
+            username: 'Galaktik Rehber',
+            photoURL: 'https://cdn-icons-png.flaticon.com/512/2592/2592231.png',
+            createdAt: serverTimestamp(),
+            isBot: true,
+            level: 999 // Bot her zaman son seviye!
+        });
+    }
 };
 
 export const sendDM = async (content, isFile = false) => {
@@ -952,7 +1039,7 @@ export const sendDM = async (content, isFile = false) => {
     await addDoc(collection(db, `direct_messages/${dmId}/messages`), msgData);
 };
 
-export const createServer = async (serverName) => {
+export const createServer = async (data) => {
     const user = auth.currentUser;
 
     // PREMIUM KONTROLÜ (Limit: 5)
@@ -969,11 +1056,18 @@ export const createServer = async (serverName) => {
 
     const serverRef = doc(collection(db, 'servers'));
     await setDoc(serverRef, {
-        name: serverName,
+        name: data.name,
+        description: data.description || "",
+        category: data.category || "genel",
+        isPublic: data.isPublic !== undefined ? data.isPublic : true,
+        requiresApproval: data.requiresApproval || false,
         inviteCode: serverRef.id.substring(0, 6).toUpperCase(),
         ownerUid: user.uid,
         createdAt: Date.now(),
-        members: [user.uid]
+        members: [user.uid],
+        memberCount: 1,
+        activeMemberCount: 1,
+        popularityScore: 0
     });
 
     // SUNUCU ÜYE LİSTESİNE KENDİNİ EKLE
@@ -1007,10 +1101,40 @@ export const joinServer = async (code) => {
 
     const serverDoc = snap.docs[0];
     const serverId = serverDoc.id;
+    const serverData = serverDoc.data();
+
+    // Zaten üye mi?
+    if (serverData.members?.includes(user.uid)) {
+        showToast("Zaten bu galaksinin bir parçasısınız!", "info");
+        return serverId;
+    }
+
+    // Onay gerekiyor mu?
+    if (serverData.requiresApproval) {
+        // İstek zaten var mı kontrol et
+        const requestRef = doc(db, 'servers', serverId, 'joinRequests', user.uid);
+        const requestSnap = await getDoc(requestRef);
+        
+        if (requestSnap.exists()) {
+            throw new Error("Katılım isteğiniz zaten beklemede! Sabırlı olun Pilot. 🛸");
+        }
+
+        await setDoc(requestRef, {
+            uid: user.uid,
+            username: user.displayName,
+            photoURL: user.photoURL,
+            requestedAt: Date.now(),
+            status: 'pending'
+        });
+
+        showToast("Katılım isteğin galaksi yönetimine iletildi! Onay bekliyor... 📡", "success");
+        return null; // Henüz katılmadı
+    }
 
     // Sunucu ana dökümanına üye olarak ekle
     await updateDoc(doc(db, 'servers', serverId), {
-        members: arrayUnion(user.uid)
+        members: arrayUnion(user.uid),
+        memberCount: (serverData.memberCount || 0) + 1
     });
 
     // ÖZEL ÜYE LİSTESİNE EKLE
@@ -1018,10 +1142,12 @@ export const joinServer = async (code) => {
         uid: user.uid,
         username: user.displayName,
         photoURL: user.photoURL,
-        joinedAt: Date.now()
+        joinedAt: Date.now(),
+        roles: []
     });
 
     return serverId;
+
 };
 
 export const deleteServer = async (serverId) => {
@@ -1079,6 +1205,12 @@ export const switchServer = async (serverId, serverData) => {
     window.lastActiveServerId = serverId;
     activeServerName.innerText = serverData.name;
 
+    // ATMOSFER UYGULA
+    document.body.className = ''; // Temizle
+    if (serverData.atmosphere && serverData.atmosphere !== 'default') {
+        document.body.classList.add(`theme-${serverData.atmosphere}`);
+    }
+
     // ownerUid eksikse mevcut kullanıcıyı otomatik owner yap (eski sunucular için)
     if (!serverData.ownerUid && auth.currentUser) {
         try {
@@ -1107,6 +1239,18 @@ export const switchServer = async (serverId, serverData) => {
     // Show Invite Box
     document.getElementById('invite-box').classList.remove('hidden');
     document.getElementById('current-invite-code').innerText = `#${serverId.slice(0, 7)}`;
+    
+    // Davet Butonu Mantığı
+    const copyInviteBtn = document.getElementById('copy-invite-btn');
+    if (copyInviteBtn) {
+        copyInviteBtn.style.display = 'flex';
+        copyInviteBtn.onclick = (e) => {
+            e.stopPropagation();
+            const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${serverData.inviteCode || serverId}`;
+            navigator.clipboard.writeText(inviteUrl);
+            showToast("Galaktik davet linki kopyalandı! 🌌🔗", "success");
+        };
+    }
 
     // --- PREMİUM PROMOSYON TETİKLEYİCİ ---
     const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
@@ -1491,35 +1635,23 @@ export const assignRoleToMember = async (uid, roleIds) => {
 
 // Global User Profile Open Handler
 window.openUserProfile = async (data) => {
+    if (!data || !data.uid) return;
+    
     const pfp = document.getElementById('profile-modal-pfp');
     const name = document.getElementById('profile-modal-name');
     const bio = document.getElementById('profile-modal-bio');
+    const banner = document.getElementById('profile-modal-banner');
     const editBtn = document.getElementById('open-edit-mode-btn');
     const currentUser = auth.currentUser;
 
-    pfp.src = data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`;
-    name.innerText = data.username;
+    // 1. Önce eldeki verilerle doldur
+    pfp.src = data.photoURL || `https://ui-avatars.com/api/?name=${data.username || 'U'}&background=random`;
+    name.innerText = data.username || 'Kullanıcı';
     bio.innerText = data.bio || "Henüz bir biyografi eklenmemiş.";
+    if (data.bannerURL) banner.style.backgroundImage = `url(${data.bannerURL})`;
+    else banner.style.backgroundImage = 'none';
 
-    // Önce modalı aç — async işlemler sonradan dolduracak
-    if (currentUser && currentUser.uid === data.uid) {
-        editBtn.classList.remove('hidden');
-        document.getElementById('edit-profile-banner-input').value = data.bannerURL || '';
-        document.getElementById('edit-profile-effect-input').value = data.messageEffect || 'none';
-        document.getElementById('edit-profile-name-input').value = data.username || '';
-        document.getElementById('edit-profile-bio-input').value = data.bio || '';
-    } else {
-        editBtn.classList.add('hidden');
-    }
-
-    const banner = document.getElementById('profile-modal-banner');
-    if (data.bannerURL) {
-        banner.style.backgroundImage = `url(${data.bannerURL})`;
-    } else {
-        banner.style.backgroundImage = 'none';
-    }
-
-    // Eski rol panelini temizle
+    // 2. Modalı aç
     const oldPanel = document.getElementById('profile-role-panel');
     if (oldPanel) oldPanel.remove();
 
@@ -1527,26 +1659,57 @@ window.openUserProfile = async (data) => {
     document.getElementById('profile-view-mode').classList.remove('hidden');
     document.getElementById('profile-edit-mode').classList.add('hidden');
 
-    // Premium & Rozet Kontrolü
-    const userDoc = await getDoc(doc(db, 'users', data.uid));
-    if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const isPremium = userData.isPremium;
+    // 3. Firestore'dan taze veriyi çek
+    try {
+        const userDoc = await getDoc(doc(db, 'users', data.uid));
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+            // Güncelle
+            pfp.src = userData.photoURL || pfp.src;
+            name.innerText = userData.username || name.innerText;
+            bio.innerText = userData.bio || bio.innerText;
+            if (userData.bannerURL) banner.style.backgroundImage = `url(${userData.bannerURL})`;
 
-        // Premium Rozeti (🚀)
-        const badgeSpot = document.getElementById('premium-badge-spot');
-        badgeSpot.innerHTML = isPremium ? '<i data-lucide="zap" style="color: gold; width: 22px; filter: drop-shadow(0 0 5px gold);"></i>' : '';
-
-        // Diğer Rozetler
-        const badgesList = document.getElementById('profile-badges');
-        badgesList.innerHTML = '';
-        if (isPremium) badgesList.innerHTML += '<div class="role-pill" style="border-color: gold; color: gold; font-size: 9px; padding: 2px 6px;">PREMIUM</div>';
-        if (userData.isOwner || data.uid === 'SİZİN_ADMIN_UID_NİZ') {
-            badgesList.innerHTML += '<div class="role-pill" style="border-color: #8a2be2; color: #8a2be2; font-size: 9px; padding: 2px 6px;">KURUCU</div>';
+            if (currentUser && currentUser.uid === data.uid) {
+                editBtn.classList.remove('hidden');
+                document.getElementById('edit-profile-pfp-input').value = userData.photoURL || '';
+                document.getElementById('edit-profile-banner-input').value = userData.bannerURL || '';
+                document.getElementById('edit-profile-effect-input').value = userData.messageEffect || 'none';
+                document.getElementById('edit-profile-name-input').value = userData.username || '';
+                document.getElementById('edit-profile-bio-input').value = userData.bio || '';
+            } else {
+                editBtn.classList.add('hidden');
+            }
         }
-        badgesList.innerHTML += '<div class="role-pill" style="border-color: #00ced1; color: #00ced1; font-size: 9px; padding: 2px 6px;">GÖNÜLLÜ TESTER</div>';
+    } catch (err) {
+        console.error("Profil yüklenirken hata:", err);
+    }
 
-        lucide.createIcons();
+    // Premium & Rozet Kontrolü
+    try {
+        const userDoc = await getDoc(doc(db, 'users', data.uid));
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const isPremium = userData.isPremium;
+
+            // Premium Rozeti (🚀)
+            const badgeSpot = document.getElementById('premium-badge-spot');
+            if (badgeSpot) badgeSpot.innerHTML = isPremium ? '<i data-lucide="zap" style="color: gold; width: 22px; filter: drop-shadow(0 0 5px gold);"></i>' : '';
+
+            // Diğer Rozetler
+            const badgesList = document.getElementById('profile-badges');
+            if (badgesList) {
+                badgesList.innerHTML = '';
+                if (isPremium) badgesList.innerHTML += '<div class="role-pill" style="border-color: gold; color: gold; font-size: 9px; padding: 2px 6px;">PREMIUM</div>';
+                if (userData.isOwner || data.uid === 'O6VwU1llWheG2PFb9omzx7YqXE82') {
+                    badgesList.innerHTML += '<div class="role-pill" style="border-color: #8a2be2; color: #8a2be2; font-size: 9px; padding: 2px 6px;">KURUCU</div>';
+                }
+                badgesList.innerHTML += '<div class="role-pill" style="border-color: #00ced1; color: #00ced1; font-size: 9px; padding: 2px 6px;">GÖNÜLLÜ TESTER</div>';
+            }
+            lucide.createIcons();
+        }
+    } catch (err) {
+        console.warn("Rozetler yüklenemedi:", err);
     }
 
     // Sunucu bağlamı yoksa rol yönetimini atla
@@ -1764,12 +1927,17 @@ auth.onAuthStateChanged(async (user) => {
         initGlobalDMListener();
 
         // ADMIN KONTROLÜ (SADECE SİZİN İÇİN)
-        const ADMIN_UID = 'JU4pSd1VslcS6zJoaImsKjESzhl2';
+        const ADMIN_UID = 'O6VwU1llWheG2PFb9omzx7YqXE82';
         const adminBtn = document.getElementById('admin-launcher-btn');
         if (user.uid === ADMIN_UID) {
             adminBtn.style.display = 'flex';
         } else {
             adminBtn.style.display = 'none';
+        }
+
+        // Giriş yapıldığında Ayarlar panelini hazırla
+        if (window.openUserSettings) {
+             // Opsiyonel: İlk açılışta verileri önceden doldurabiliriz
         }
 
         // Kullanıcı dökümanını oluştur veya güncelle
@@ -1789,11 +1957,21 @@ auth.onAuthStateChanged(async (user) => {
 
         // BEKLEYEN DAVET VAR MI?
         const pendingInvite = sessionStorage.getItem('pendingInvite');
-        if (pendingInvite) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlInvite = urlParams.get('invite');
+        
+        const inviteCode = urlInvite || pendingInvite;
+
+        if (inviteCode) {
             sessionStorage.removeItem('pendingInvite');
+            if (urlInvite) {
+                // Temiz URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            
             try {
-                await joinServer(pendingInvite);
-                showToast(`Başarıyla katıldın!`, "success");
+                await joinServer(inviteCode);
+                showToast(`Davet linki ile katılındı! 🚀`, "success");
             } catch (err) {
                 showToast(err.message, "error");
             }
@@ -1835,35 +2013,91 @@ document.getElementById('server-header-btn').onclick = async () => {
         loadRoles();
         loadRoleChannelsUI('new-role-channels'); // AYARLAR AÇILDIĞINDA KANALLARI DA YÜKLE
 
-        // Sunucu Verilerini Yükle (Premium & Davet Kodu)
+        // Sunucu Verilerini Yükle (Keşfet & Görünüm)
         const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
         if (serverSnap.exists()) {
             const serverData = serverSnap.data();
-            document.getElementById('custom-invite-input').value = serverData.inviteCode || '';
+            
+            // Keşfet Ayarları Doldur
+            document.getElementById('discovery-public-toggle').checked = serverData.isPublic !== false;
+            document.getElementById('discovery-approval-toggle').checked = serverData.requiresApproval === true;
+            document.getElementById('discovery-category-select').value = serverData.category || 'genel';
+            document.getElementById('discovery-desc-input').value = serverData.description || '';
+            document.getElementById('discovery-lang-select').value = serverData.language || 'tr';
+            document.getElementById('discovery-tags-input').value = (serverData.tags || []).join(', ');
+            document.getElementById('discovery-atmosphere-select').value = serverData.atmosphere || 'default';
+            document.getElementById('server-banner-url').value = serverData.bannerURL || '';
+            document.getElementById('server-logo-url').value = serverData.logoURL || '';
 
-            // Sahibi Premium mu kontrol et
+            // Sahibi Premium mu kontrol et (Temalar için)
             const ownerSnap = await getDoc(doc(db, 'users', serverData.ownerUid));
             const isPremium = ownerSnap.exists() && ownerSnap.data().isPremium;
-
-            const statusIndicator = document.getElementById('premium-status-indicator');
-            const statusText = document.getElementById('p-status-text');
-            const buyBtn = document.getElementById('buy-premium-btn');
             const themeArea = document.getElementById('theme-selector-area');
 
             if (isPremium) {
-                statusIndicator.style.background = 'rgba(255, 215, 0, 0.1)';
-                if (statusText) statusText.innerHTML = '<span style="font-weight: 800; color: gold;">BU SUNUCU PREMIUM AYRICALIKLARINA SAHİP! 💎</span>';
-                if (buyBtn) buyBtn.classList.add('hidden');
                 themeArea.classList.remove('hidden');
             } else {
-                statusIndicator.style.background = 'rgba(255, 255, 255, 0.05)';
-                if (statusText) statusText.innerHTML = '<span style="color: var(--text-secondary);">BU SUNUCU STANDART SÜRÜMDE. ÖZEL KOD VE TEMALAR İÇİN PREMIUM GEREKLİ.</span>';
-                if (buyBtn) buyBtn.classList.remove('hidden');
                 themeArea.classList.add('hidden');
             }
         }
     } else {
         showToast("Sunucu ayarları için yetkiniz yok.", "error");
+    }
+};
+
+// BANNER & LOGO UPLOAD HANDLERS
+const setupImageUpload = (fileId, urlId, label) => {
+    const fileInput = document.getElementById(fileId);
+    if (!fileInput) return;
+    fileInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Max 500KB since it's Firestore Base64
+        if (file.size > 500 * 1024) {
+            return showToast("Görsel boyutu çok yüksek (Max 500KB)!", "error");
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            document.getElementById(urlId).value = event.target.result;
+            showToast(`${label} hazır! Kaydet butonuna basmayı unutma.`, "success");
+        };
+        reader.readAsDataURL(file);
+    };
+};
+setupImageUpload('server-banner-file', 'server-banner-url', 'Banner');
+setupImageUpload('server-logo-file', 'server-logo-url', 'Logo');
+
+// KEŞFET AYARLARINI KAYDET
+document.getElementById('save-discovery-settings').onclick = async () => {
+    if (!currentServerId) return;
+    try {
+        const isPublic = document.getElementById('discovery-public-toggle').checked;
+        const requiresApproval = document.getElementById('discovery-approval-toggle').checked;
+        const category = document.getElementById('discovery-category-select').value;
+        const description = document.getElementById('discovery-desc-input').value.trim();
+        const language = document.getElementById('discovery-lang-select').value;
+        const tags = document.getElementById('discovery-tags-input').value.split(',').map(t => t.trim().replace('#','')).filter(t => t);
+        const atmosphere = document.getElementById('discovery-atmosphere-select').value;
+        const bannerURL = document.getElementById('server-banner-url').value;
+        const logoURL = document.getElementById('server-logo-url').value;
+
+        await updateDoc(doc(db, 'servers', currentServerId), {
+            isPublic,
+            requiresApproval,
+            category,
+            description,
+            language,
+            tags,
+            atmosphere,
+            bannerURL,
+            logoURL
+        });
+
+        showToast("Keşfet ayarları başarıyla güncellendi! 🪐", "success");
+    } catch (err) {
+        showToast("Hata: " + err.message, "error");
     }
 };
 
@@ -1916,29 +2150,170 @@ document.getElementById('save-role-perms-btn').onclick = async () => {
 // Ayarlar Sekme Geçişleri
 document.querySelectorAll('.settings-nav-item').forEach(item => {
     item.onclick = () => {
-        const tab = item.dataset.tab;
+        const targetTab = item.dataset.tab;
+        
+        // Aktif buton görseli
         document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
         item.classList.add('active');
 
-        if (tab === 'roles') {
-            document.getElementById('roles-tab').classList.remove('hidden');
-            document.getElementById('members-tab').classList.add('hidden');
-            document.getElementById('premium-tab').classList.add('hidden');
+        // İçerik geçişi
+        const tabs = ['roles', 'members', 'requests', 'discovery'];
+        tabs.forEach(tabId => {
+            const el = document.getElementById(`${tabId}-tab`);
+            if (el) {
+                if (tabId === targetTab) {
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
+            }
+        });
+
+        // Sekmeye özel veri yükleme
+        if (targetTab === 'roles') {
             loadRoles();
             loadRoleChannelsUI('new-role-channels');
-        } else if (tab === 'members') {
-            document.getElementById('roles-tab').classList.add('hidden');
-            document.getElementById('members-tab').classList.remove('hidden');
-            document.getElementById('premium-tab').classList.add('hidden');
+        } else if (targetTab === 'members') {
             loadMembersInSettings();
-        } else if (tab === 'premium') {
-            document.getElementById('roles-tab').classList.add('hidden');
-            document.getElementById('members-tab').classList.add('hidden');
-            document.getElementById('premium-tab').classList.remove('hidden');
-            loadPremiumStatus();
+        } else if (targetTab === 'requests') {
+            loadJoinRequests();
         }
+
     };
 });
+
+// --- JOIN REQUESTS LOGIC ---
+const loadJoinRequests = async () => {
+    const listContainer = document.getElementById('settings-requests-list');
+    if (!listContainer || !currentServerId) return;
+
+    listContainer.innerHTML = '<div style="color: grey; text-align: center; padding: 20px;">İstekler taranıyor... 📡</div>';
+
+    try {
+        const q = query(collection(db, 'servers', currentServerId, 'joinRequests'), where('status', '==', 'pending'));
+        const snap = await getDocs(q);
+
+        if (snap.empty) {
+            listContainer.innerHTML = '<div style="color: grey; text-align: center; padding: 20px;">Bekleyen katılım isteği bulunamadı. 🌌</div>';
+            return;
+        }
+
+        let requests = [];
+        snap.forEach(docSnap => {
+            const data = docSnap.data();
+            data.id = docSnap.id;
+            requests.push(data);
+        });
+
+        // Client-side sorting (En yeni en üstte)
+        requests.sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0));
+
+        listContainer.innerHTML = '';
+        requests.forEach(data => {
+            const requestItem = document.createElement('div');
+
+            requestItem.className = 'role-item'; // Reuse role-item styling for consistency
+            requestItem.style.background = 'rgba(255,255,255,0.03)';
+            requestItem.style.padding = '16px';
+            
+            requestItem.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                    <img src="${data.photoURL || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" style="width: 32px; height: 32px; border-radius: 50%;">
+                    <div>
+                        <div style="font-weight: 700; color: white;">${data.username}</div>
+                        <div style="font-size: 11px; color: var(--text-secondary);">${new Date(data.requestedAt).toLocaleString()}</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="approve-req-btn auth-btn" data-uid="${data.uid}" style="background: var(--success-color); padding: 6px 12px; font-size: 11px; width: auto;">ONAYLA</button>
+                    <button class="reject-req-btn auth-btn" data-uid="${data.uid}" style="background: var(--error-color); padding: 6px 12px; font-size: 11px; width: auto;">REDDET</button>
+                </div>
+            `;
+            listContainer.appendChild(requestItem);
+        });
+
+        // Event Listeners for buttons
+        listContainer.querySelectorAll('.approve-req-btn').forEach(btn => {
+            btn.onclick = () => approveJoinRequest(btn.dataset.uid);
+        });
+        listContainer.querySelectorAll('.reject-req-btn').forEach(btn => {
+            btn.onclick = () => rejectJoinRequest(btn.dataset.uid);
+        });
+
+    } catch (err) {
+        listContainer.innerHTML = `<div style="color: var(--error-color); text-align: center;">Hata: ${err.message}</div>`;
+    }
+};
+
+const approveJoinRequest = async (userId) => {
+    if (!currentServerId || !userId) return;
+
+    try {
+        const serverRef = doc(db, 'servers', currentServerId);
+        const serverSnap = await getDoc(serverRef);
+        if (!serverSnap.exists()) return;
+
+        const serverData = serverSnap.data();
+        const requestRef = doc(db, 'servers', currentServerId, 'joinRequests', userId);
+        const requestSnap = await getDoc(requestRef);
+        if (!requestSnap.exists()) return;
+
+        const userData = requestSnap.data();
+
+        // 1. Üye listesini güncelle
+        await updateDoc(serverRef, {
+            members: arrayUnion(userId),
+            memberCount: (serverData.memberCount || 0) + 1
+        });
+
+        // 2. Sub-collection'a ekle
+        await setDoc(doc(db, 'servers', currentServerId, 'members', userId), {
+            uid: userId,
+            username: userData.username,
+            photoURL: userData.photoURL,
+            joinedAt: Date.now(),
+            roles: []
+        });
+
+        // 3. İsteği sil
+        await deleteDoc(requestRef);
+
+        showToast(`${userData.username} artık bu galaksinin bir parçası! 🚀`, "success");
+        
+        // Hoş geldin mesajı gönder
+        const channelsSnap = await getDocs(query(collection(db, 'servers', currentServerId, 'channels'), limit(1)));
+        if (!channelsSnap.empty) {
+            const firstChannelId = channelsSnap.docs[0].id;
+            await addDoc(collection(db, 'messages'), {
+                channelId: firstChannelId,
+                text: `✨ Yolcu **${userData.username}** galaksimize iniş yaptı! Hoş geldin!`,
+                uid: 'galactic_guide_bot',
+                username: 'Galaktik Rehber',
+                photoURL: 'https://cdn-icons-png.flaticon.com/512/2592/2592231.png',
+                createdAt: serverTimestamp(),
+                isBot: true
+            });
+        }
+        
+        loadJoinRequests(); // Listeyi yenile
+    } catch (err) {
+        showToast("Onaylama hatası: " + err.message, "error");
+    }
+};
+
+const rejectJoinRequest = async (userId) => {
+    if (!currentServerId || !userId) return;
+
+    try {
+        const requestRef = doc(db, 'servers', currentServerId, 'joinRequests', userId);
+        await deleteDoc(requestRef);
+        showToast("İstek reddedildi.", "info");
+        loadJoinRequests();
+    } catch (err) {
+        showToast("Reddetme hatası: " + err.message, "error");
+    }
+};
+
 
 const loadPremiumStatus = async () => {
     const user = auth.currentUser;
@@ -1964,25 +2339,28 @@ const loadPremiumStatus = async () => {
     }
 };
 
-document.getElementById('buy-premium-btn').onclick = async () => {
-    const user = auth.currentUser;
-    if (!user) return;
+const buyPremiumBtn = document.getElementById('buy-premium-btn');
+if (buyPremiumBtn) {
+    buyPremiumBtn.onclick = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
 
-    const confirmed = await customConfirm("Premium Talebi", "Şu anda ödeme altyapımız bakımda olduğundan talebiniz manuel olarak incelenecektir. Yöneticiye Premium talebi göndermek istiyor musunuz?");
-    if (confirmed) {
-        try {
-            await setDoc(doc(db, 'premium_requests', user.uid), {
-                uid: user.uid,
-                username: user.displayName || user.username || "Kullanıcı",
-                status: 'pending',
-                createdAt: serverTimestamp()
-            });
-            showToast("Talebin galaktik komuta merkezine iletildi. Onaylanınca haberin olacak!", "success");
-        } catch (err) {
-            showToast("Talebin iletilemedi: " + err.message, "error");
+        const confirmed = await customConfirm("Premium Talebi", "Şu anda ödeme altyapımız bakımda olduğundan talebiniz manuel olarak incelenecektir. Yöneticiye Premium talebi göndermek istiyor musunuz?");
+        if (confirmed) {
+            try {
+                await setDoc(doc(db, 'premium_requests', user.uid), {
+                    uid: user.uid,
+                    username: user.displayName || user.username || "Kullanıcı",
+                    status: 'pending',
+                    createdAt: serverTimestamp()
+                });
+                showToast("Talebin galaktik komuta merkezine iletildi. Onaylanınca haberin olacak!", "success");
+            } catch (err) {
+                showToast("Talebin iletilemedi: " + err.message, "error");
+            }
         }
-    }
-};
+    };
+}
 
 // --- ADMIN PANELİ (KOMUTA MERKEZİ) MANTIĞI ---
 // (Consolidated premium requests listener)
@@ -2054,7 +2432,8 @@ const listenToPremiumRequests = () => {
 
             document.getElementById(`approve-${docSnap.id}`).onclick = async () => {
                 try {
-                    await updateDoc(doc(db, 'users', docSnap.id), { isPremium: true });
+                    const uRef = doc(db, 'users', docSnap.id);
+                    await setDoc(uRef, { isPremium: true }, { merge: true });
                     await deleteDoc(doc(db, 'premium_requests', docSnap.id));
                     showToast(`${req.username} artık Premium! 🚀`, "success");
                 } catch (err) {
@@ -2108,42 +2487,47 @@ document.querySelectorAll('.theme-option').forEach(btn => {
     };
 });
 
-document.getElementById('save-custom-invite').onclick = async () => {
-    if (!currentServerId) return;
-    const newCode = document.getElementById('custom-invite-input').value.trim();
-    if (!newCode) return;
+const saveCustomInviteBtn = document.getElementById('save-custom-invite');
+if (saveCustomInviteBtn) {
+    saveCustomInviteBtn.onclick = async () => {
+        if (!currentServerId) return;
+        const newCode = document.getElementById('custom-invite-input').value.trim();
+        if (!newCode) return;
 
-    if (newCode.length < 3) return showToast("Özel kod en az 3 karakter olmalı!", "error");
+        if (newCode.length < 3) return showToast("Özel kod en az 3 karakter olmalı!", "error");
 
-    try {
-        const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
-        if (!serverSnap.exists()) return;
+        try {
+            const serverSnap = await getDoc(doc(db, 'servers', currentServerId));
+            if (!serverSnap.exists()) return;
 
-        const ownerUid = serverSnap.data().ownerUid;
-        const ownerSnap = await getDoc(doc(db, 'users', ownerUid));
-        const isPremium = ownerSnap.exists() && ownerSnap.data().isPremium;
+            const ownerUid = serverSnap.data().ownerUid;
+            const ownerSnap = await getDoc(doc(db, 'users', ownerUid));
+            const isPremium = ownerSnap.exists() && ownerSnap.data().isPremium;
 
-        if (!isPremium) {
-            return showToast("Özel davet kodu sadece Premium sunucular içindir! 💎", "error");
+            if (!isPremium) {
+                return showToast("Özel davet kodu sadece Premium sunucular içindir! 💎", "error");
+            }
+
+            // Çakışma kontrolü
+            const q = query(collection(db, 'servers'), where('inviteCode', '==', newCode));
+            const snap = await getDocs(q);
+
+            // Kendi kodumuzsa sorun yok, başkasınındaysa hata ver
+            const isAlreadyTakenByOthers = snap.docs.some(d => d.id !== currentServerId);
+            if (isAlreadyTakenByOthers) {
+                return showToast("Bu galaktik kod zaten başka bir sunucu tarafından kapılmış! 🛸", "error");
+            }
+
+            await updateDoc(doc(db, 'servers', currentServerId), { inviteCode: newCode });
+            showToast(`Özel bağlantın artık aktif: chatin/invite/${newCode} ✨`, "success");
+        } catch (err) {
+            console.error(err);
+            showToast("Davet kodu güncellenirken hata oluştu!", "error");
         }
+    };
+}
 
-        // Çakışma kontrolü
-        const q = query(collection(db, 'servers'), where('inviteCode', '==', newCode));
-        const snap = await getDocs(q);
 
-        // Kendi kodumuzsa sorun yok, başkasınındaysa hata ver
-        const isAlreadyTakenByOthers = snap.docs.some(d => d.id !== currentServerId);
-        if (isAlreadyTakenByOthers) {
-            return showToast("Bu galaktik kod zaten başka bir sunucu tarafından kapılmış! 🛸", "error");
-        }
-
-        await updateDoc(doc(db, 'servers', currentServerId), { inviteCode: newCode });
-        showToast(`Özel bağlantın artık aktif: chatin/invite/${newCode} ✨`, "success");
-    } catch (err) {
-        console.error(err);
-        showToast("Davet kodu güncellenirken hata oluştu!", "error");
-    }
-};
 
 document.getElementById('delete-server-btn-trigger').onclick = () => {
     deleteServer(currentServerId);
@@ -2157,13 +2541,6 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Keşfet Modalı Aç
-document.addEventListener('click', (e) => {
-    const btn = e.target.closest('#explore-btn');
-    if (btn) {
-        document.getElementById('join-server-modal').classList.remove('hidden');
-    }
-});
 
 // MODALLARI KAPAT (X Butonları, İptal Butonları veya Boşluğa Tıklama)
 document.addEventListener('mousedown', (e) => {
@@ -2181,13 +2558,28 @@ document.addEventListener('mousedown', (e) => {
 document.addEventListener('click', async (e) => {
     if (e.target.closest('#create-server-final-btn')) {
         const nameInput = document.getElementById('server-name-input');
+        const catInput = document.getElementById('server-category-input');
+        const descInput = document.getElementById('server-description-input');
+        const publicCheck = document.getElementById('server-public-checkbox');
+        const approvalCheck = document.getElementById('server-approval-checkbox');
+
         const name = nameInput.value.trim();
         if (!name) return showToast("Sunucu adı boş olamaz!", "error");
 
         try {
-            await createServer(name);
+            await createServer({
+                name: name,
+                category: catInput.value,
+                description: descInput.value.trim(),
+                isPublic: publicCheck.checked,
+                requiresApproval: approvalCheck.checked
+            });
             document.getElementById('create-server-modal').classList.add('hidden');
+            
+            // Clear fields
             nameInput.value = '';
+            descInput.value = '';
+            
             showToast("Güneş Sistemi'nde yeni bir sunucu doğdu!", "success");
             listenToServers(); // Listeyi yenile
         } catch (err) {
@@ -2290,7 +2682,7 @@ document.addEventListener('click', async (e) => {
             if (audio.id.startsWith('audio-')) audio.muted = isDeafened;
         });
         const icon = deafenBtn.querySelector('i, svg');
-        if (icon) icon.setAttribute('data-lucide', isDeafened ? 'headphones-off' : 'headphones');
+        if (icon) icon.setAttribute('data-lucide', isDeafened ? 'volume-x' : 'headphones');
         deafenBtn.classList.toggle('off', isDeafened);
         deafenBtn.title = isDeafened ? "Sesi Aç" : "Sağırlaştır";
         lucide.createIcons();
@@ -2362,66 +2754,108 @@ document.addEventListener('click', async (e) => {
 
 
 // --- PREMIUM KARŞILAMA MODAL BUTONLARI ---
-document.getElementById('request-premium-welcome-btn').onclick = async () => {
-    const user = auth.currentUser;
-    if (!user) return;
+const reqPremiumWelcomeBtn = document.getElementById('request-premium-welcome-btn');
+if (reqPremiumWelcomeBtn) {
+    reqPremiumWelcomeBtn.onclick = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+        try {
+            await setDoc(doc(db, 'premium_requests', user.uid), {
+                uid: user.uid,
+                username: user.displayName || "Kullanıcı",
+                status: 'pending',
+                createdAt: serverTimestamp()
+            });
+            showToast("Premium talebin iletildi! ✨", "success");
+            document.getElementById('premium-welcome-modal').classList.add('hidden');
+        } catch (err) {
+            showToast("Hata: " + err.message, "error");
+        }
+    };
+}
 
-    try {
-        await addDoc(collection(db, 'premium_requests'), {
-            uid: user.uid,
-            username: user.displayName || user.email.split('@')[0],
-            email: user.email,
-            status: 'pending',
-            createdAt: serverTimestamp()
-        });
-        showToast("Premium talebi Galaksi Adminine iletildi!", "success");
+const closePremiumWelcomeBtn = document.getElementById('close-premium-welcome-btn');
+if (closePremiumWelcomeBtn) {
+    closePremiumWelcomeBtn.onclick = () => {
         document.getElementById('premium-welcome-modal').classList.add('hidden');
-    } catch (err) {
-        showToast("Hata: " + err.message, "error");
-    }
-};
-
-document.getElementById('close-premium-welcome-btn').onclick = () => {
-    document.getElementById('premium-welcome-modal').classList.add('hidden');
-};
+    };
+}
 
 // --- KULLANICI AYARLARI MANTIĞI ---
-window.openUserSettings = (tab = 'account') => {
+const openUserSettings = async (tab = 'account') => {
+    console.log("Ayarlar açılıyor, sekme:", tab);
     const user = auth.currentUser;
-    if (!user) return;
+    
+    const modal = document.getElementById('user-settings-modal');
+    if (!modal) return console.error("Ayarlar modali bulunamadı!");
+    
+    modal.classList.remove('hidden');
 
-    document.getElementById('user-settings-modal').classList.remove('hidden');
+    const nameDisplay = document.getElementById('settings-name-display');
+    const emailDisplay = document.getElementById('settings-email-display');
+    const pfpPreview = document.getElementById('settings-pfp-preview');
 
-    // Verileri yükle
-    document.getElementById('settings-pfp-preview').src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'Üye'}`;
-    document.getElementById('settings-name-display').innerText = user.displayName || 'İsimsiz Üye';
-    document.getElementById('settings-email-display').innerText = user.email;
+    if (!user) {
+        if (nameDisplay) nameDisplay.innerText = "Giriş Yapılmadı";
+        return;
+    }
 
-    // Premium durumu kontrol
-    getDoc(doc(db, 'users', user.uid)).then(docSnap => {
-        const isPremium = docSnap.exists() && docSnap.data().isPremium;
-        const premBox = document.getElementById('settings-premium-box');
-        if (isPremium) {
-            premBox.style.borderColor = 'gold';
-            premBox.style.background = 'rgba(255,215,0,0.05)';
-            premBox.innerHTML = `
-                <i data-lucide="shield-check" style="width: 60px; height: 60px; color: gold; margin-bottom: 20px;"></i>
-                <h3 style="color: gold; font-size: 20px;">AKTİF PREMIUM ÜYE</h3>
-                <p style="color: var(--text-secondary); margin-bottom: 15px;">Galaktik Chatin ayrıcalıklarının tadını çıkarıyorsun! 🚀</p>
-            `;
-        } else {
-            premBox.innerHTML = `
-                <i data-lucide="shield-alert" style="width: 60px; height: 60px; color: grey; margin-bottom: 20px; opacity: 0.5;"></i>
-                <h3 style="color: white; font-size: 20px;">Henüz Premium Değilsiniz</h3>
-                <p style="color: var(--text-secondary); margin-bottom: 25px;">Galaktik bannerlar, özel mesaj efektleri ve daha fazlası için Premium'a geçin.</p>
-                <button class="auth-btn" style="background: gold; color: black; font-weight: 900;" onclick="document.getElementById('user-settings-modal').classList.add('hidden'); document.getElementById('open-premium-promo-test')?.click();">HEMEN PREMIUM OL</button>
-            `;
-        }
-        lucide.createIcons();
-    });
+    // 1. Önce auth verileriyle doldur (Hızlı yükleme)
+    if (nameDisplay) nameDisplay.innerText = user.displayName || 'İsimsiz Üye';
+    if (emailDisplay) emailDisplay.innerText = user.email || 'E-posta Yok';
+    if (pfpPreview) pfpPreview.src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'U'}`;
 
+    // 2. Sekmeyi değiştir
     switchSettingsTab(tab);
+
+    // 3. Firestore'dan en güncel veriyi çek ve güncelle
+    try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const isPremium = userData.isPremium || false;
+
+            if (nameDisplay) nameDisplay.innerText = userData.username || user.displayName || 'İsimsiz Üye';
+            if (pfpPreview) pfpPreview.src = userData.photoURL || user.photoURL || `https://ui-avatars.com/api/?name=${userData.username || 'U'}`;
+
+            // Premium kutusunu güncelle
+            const premBox = document.getElementById('settings-premium-box');
+            if (premBox) {
+                if (isPremium) {
+                    premBox.style.borderColor = 'gold';
+                    premBox.style.background = 'rgba(255,215,0,0.05)';
+                    premBox.innerHTML = `
+                        <i data-lucide="shield-check" style="width: 60px; height: 60px; color: gold; margin-bottom: 20px;"></i>
+                        <h3 style="color: gold; font-size: 20px;">AKTİF PREMIUM ÜYE</h3>
+                        <div style="width: 100%; margin-top: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 10px; border: 1px solid var(--border-gold);">
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px;">
+                                <span>KOZMİK SEVİYE: ${userData.level || 1}</span>
+                                <span>XP: ${userData.xp || 0} / ${(userData.level || 1) * 100}</span>
+                            </div>
+                            <div style="width: 100%; height: 6px; background: #000; border-radius: 3px; overflow: hidden;">
+                                <div style="width: ${(userData.xp || 0) / ((userData.level || 1) * 100) * 100}%; height: 100%; background: var(--brand-color); box-shadow: 0 0 10px var(--brand-color);"></div>
+                            </div>
+                        </div>
+                        <p style="color: var(--text-secondary); margin-top: 15px;">Galaktik Chatin ayrıcalıklarının tadını çıkarıyorsun! 🚀</p>
+                    `;
+                } else {
+                    premBox.style.borderColor = 'rgba(255,255,255,0.05)';
+                    premBox.style.background = 'rgba(255,255,255,0.02)';
+                    premBox.innerHTML = `
+                        <i data-lucide="shield-alert" style="width: 60px; height: 60px; color: grey; margin-bottom: 20px; opacity: 0.5;"></i>
+                        <h3 style="color: white; font-size: 20px;">Henüz Premium Değilsiniz</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 25px;">Galaktik bannerlar, özel mesaj efektleri ve daha fazlası için Premium'a geçin.</p>
+                        <button class="auth-btn buy-premium-trigger" style="background: gold; color: black; font-weight: 900;">HEMEN PREMIUM OL</button>
+                    `;
+                }
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+    } catch (err) {
+        console.warn("Firestore'dan ayarlar çekilemedi (Normal olabilir):", err);
+    }
 };
+window.openUserSettings = openUserSettings;
 
 const switchSettingsTab = (tabId) => {
     // Nav itemları güncelle
@@ -2444,6 +2878,60 @@ document.getElementById('settings-close-btn').onclick = () => {
     document.getElementById('user-settings-modal').classList.add('hidden');
 };
 
+// --- THEME SELECTION FOR USER SETTINGS ---
+document.querySelectorAll('.theme-card').forEach(card => {
+    card.onclick = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const themeKey = card.dataset.theme;
+        
+        // Default tema dışındakiler Premium kontrolü gerektirir
+        if (themeKey !== 'default') {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            const isPremium = userDoc.exists() && userDoc.data().isPremium;
+
+            if (!isPremium) {
+                return showToast("Bu tema sadece Premium üyelere özeldir! 👑", "error");
+            }
+        }
+
+        applyTheme(themeKey);
+        localStorage.setItem('chatin-theme', themeKey);
+        
+        // UI Güncelleme (active class)
+        document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        
+        showToast(`Tema başarıyla uygulandı: ${themeKey.toUpperCase()}`, "success");
+    };
+});
+
+// Helper for theme applying
+const applyTheme = (themeKey) => {
+    const themes = {
+        default: { brand: '#c5a059', bg: '#05060f', side: 'rgba(10, 11, 24, 0.95)' },
+        solar: { brand: '#e94560', bg: '#1a1a2e', side: '#16213e' },
+        nebula: { brand: '#a000ff', bg: '#10002b', side: '#240046' },
+        cyberpunk: { brand: '#00ffcc', bg: '#0a0a0a', side: 'rgba(20, 20, 20, 0.95)' },
+        gold: { brand: '#ffd700', bg: '#111111', side: 'rgba(20, 20, 20, 0.9)' }
+    };
+    const theme = themes[themeKey];
+    if (theme) {
+        document.documentElement.style.setProperty('--brand-color', theme.brand);
+        document.documentElement.style.setProperty('--bg-deep', theme.bg);
+        document.documentElement.style.setProperty('--bg-side', theme.side);
+    }
+};
+
+// --- GLOBAL PREMIUM REQUEST TRIGGER ---
+document.addEventListener('click', (e) => {
+    if (e.target.closest('.buy-premium-trigger')) {
+        const buyBtn = document.getElementById('buy-premium-btn');
+        if (buyBtn) buyBtn.click(); // Mevcut premium talep mantığını tetikle
+    }
+});
+
 // Şifre Sıfırlama
 document.getElementById('reset-password-btn').onclick = async () => {
     const user = auth.currentUser;
@@ -2457,37 +2945,7 @@ document.getElementById('reset-password-btn').onclick = async () => {
     }
 };
 
-// TEMA MANTIĞI
-const themes_config = {
-    default: { brand: '#c5a059', bg: '#05060f', side: 'rgba(10, 11, 24, 0.95)' },
-    solar: { brand: '#e94560', bg: '#1a1a2e', side: '#16213e' },
-    nebula: { brand: '#a000ff', bg: '#10002b', side: '#240046' },
-    cyberpunk: { brand: '#00ffcc', bg: '#0a0a0a', side: 'rgba(20, 20, 20, 0.95)' },
-    gold: { brand: '#ffd700', bg: '#111111', side: 'rgba(20, 20, 20, 0.9)' }
-};
 
-document.querySelectorAll('.theme-card').forEach(card => {
-    card.onclick = async () => {
-        const themeK = card.dataset.theme;
-        if (themeK === 'cyberpunk' || themeK === 'gold') {
-            const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
-            if (!userSnap.exists() || !userSnap.data().isPremium) {
-                return showToast("Bu tema yalnızca Premium üyeler içindir! 👑", "error");
-            }
-        }
-        applyTheme(themeK);
-        localStorage.setItem('chatin-theme', themeK);
-        // Aktif kartı güncelle
-        document.querySelectorAll('.theme-card').forEach(c => c.classList.toggle('active', c.dataset.theme === themeK));
-    };
-});
-
-const applyTheme = (themeKey) => {
-    const t = themes_config[themeKey] || themes_config.default;
-    document.documentElement.style.setProperty('--brand-color', t.brand);
-    document.documentElement.style.setProperty('--bg-deep', t.bg);
-    document.documentElement.style.setProperty('--bg-side', t.side);
-};
 
 // YAZI BOYUTU
 document.getElementById('font-size-slider').oninput = (e) => {
@@ -2526,3 +2984,602 @@ const initSettings = () => {
 
 // Init settings after small delay or directly
 setTimeout(initSettings, 500);
+
+// --- GALACTIC WIZARD (ONBOARDING) ---
+const tourSteps = [
+    {
+        title: "Hoş Geldin Pilot!",
+        body: "Chatin galaksisine ilk adımını attın. Sana gemi kontrollerini hızlıca öğreteyim.",
+        target: null, 
+        position: "center"
+    },
+    {
+        title: "Sunucu Filosu",
+        body: "Katıldığın tüm galaksiler (sunucular) burada listelenir. Yeni bir tane oluşturabilir veya keşfe çıkabilirsin.",
+        target: "#server-sidebar",
+        position: "right"
+    },
+    {
+        title: "Haberleşme Kanalları",
+        body: "Her galaksinin kendi kanalları vardır. Yazılı kanallarda mesajlaşabilir, sesli kanallarda telsiz bağlantısı kurabilirsin.",
+        target: "#channel-list",
+        position: "right"
+    },
+    {
+        title: "Galaktik Keşif",
+        body: "Yeni dünyalar ve topluluklar keşfetmek için bu pusulayı kullanabilirsin!",
+        target: "#explore-btn",
+        position: "right"
+    },
+    {
+        title: "Kişisel Kontroller",
+        body: "Profilini buradan düzenleyebilir, ses ayarlarını yapabilir veya gelişmiş ayarlara ulaşabilirsin.",
+        target: "#user-status-bar",
+        position: "top"
+    },
+    {
+        title: "Galaktik Ayrıcalıklar",
+        body: "Premium'a geçerek özel temalar, mesaj efektleri ve daha fazlasına sahip olabilirsin. Galaksinin en parlak yıldızı sen ol!",
+        target: "#settings-btn",
+        position: "top"
+    }
+];
+
+let currentTourStep = 0;
+
+const renderTourStep = () => {
+    const step = tourSteps[currentTourStep];
+    const card = document.getElementById("wizard-card");
+    const body = document.getElementById("wizard-body");
+    const nextBtn = document.getElementById("wizard-next-btn");
+    const overlay = document.getElementById("wizard-overlay");
+
+    document.querySelectorAll(".spotlight-active").forEach(el => el.classList.remove("spotlight-active"));
+
+    if (!card || !body || !nextBtn || !overlay) return;
+
+    body.innerHTML = step.body;
+    nextBtn.innerText = currentTourStep === tourSteps.length - 1 ? "Galaksiyi Keşfet!" : "Devam Et";
+
+    // Reset card and overlay
+    card.style.transform = "none";
+    card.style.top = "auto";
+    card.style.left = "auto";
+    card.style.right = "auto";
+    card.style.bottom = "auto";
+    overlay.style.clipPath = "none";
+
+    if (step.target) {
+        const el = document.querySelector(step.target);
+        if (el) {
+            el.classList.add("spotlight-active");
+            const rect = el.getBoundingClientRect();
+            const pad = 10;
+            
+            // Create hole in overlay using clip-path
+            const l = rect.left - pad, t = rect.top - pad, r = rect.right + pad, b = rect.bottom + pad;
+            overlay.style.clipPath = `polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%, 0% 0%, ${l}px ${t}px, ${r}px ${t}px, ${r}px ${b}px, ${l}px ${b}px, ${l}px ${t}px)`;
+            
+            if (step.position === "right") {
+                card.style.top = rect.top + "px";
+                card.style.left = (rect.right + 25) + "px";
+            } else if (step.position === "top") {
+                card.style.bottom = (window.innerHeight - rect.top + 25) + "px";
+                card.style.left = rect.left + "px";
+            }
+        }
+    } else {
+        card.style.top = "50%";
+        card.style.left = "50%";
+        card.style.transform = "translate(-50%, -50%)";
+    }
+
+    if (window.lucide) lucide.createIcons();
+};
+
+const startTour = () => {
+    const hasSeenTour = localStorage.getItem("chatin-tour-completed");
+    if (hasSeenTour) return;
+
+    const container = document.getElementById("wizard-container");
+    if(container) {
+        container.classList.remove("hidden");
+        renderTourStep();
+    }
+};
+
+const wizNext = document.getElementById("wizard-next-btn");
+if(wizNext) {
+    wizNext.onclick = () => {
+        currentTourStep++;
+        if (currentTourStep < tourSteps.length) {
+            renderTourStep();
+        } else {
+            completeTour();
+        }
+    };
+}
+
+const wizSkip = document.getElementById("wizard-skip-btn");
+if(wizSkip) {
+    wizSkip.onclick = () => completeTour();
+}
+
+const completeTour = () => {
+    document.getElementById("wizard-container").classList.add("hidden");
+    document.querySelectorAll(".spotlight-active").forEach(el => el.classList.remove("spotlight-active"));
+    localStorage.setItem("chatin-tour-completed", "true");
+    showToast("Rehber tamamlandı. İyi uçuşlar Pilot! 🚀", "success");
+};
+
+setTimeout(startTour, 4000);
+
+// --- DISCOVER SERVERS LOGIC ---
+let currentDiscoverCategory = 'all';
+let discoverSearchQuery = '';
+let discoverSortBy = 'popularity';
+let isMapView = true; // Map is default
+
+const exploreBtn = document.getElementById('explore-btn');
+const discoverOverlay = document.getElementById('discover-overlay');
+
+if (exploreBtn) {
+    exploreBtn.onclick = () => {
+        discoverOverlay.classList.remove('hidden');
+        renderGalaxyMap(); // Haritayı direkt yükle
+    };
+}
+
+document.getElementById('close-discover-btn').onclick = () => {
+    discoverOverlay.classList.add('hidden');
+};
+
+// Kategori Filtreleme
+document.querySelectorAll('.discover-nav-item').forEach(item => {
+    item.onclick = () => {
+        document.querySelectorAll('.discover-nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        currentDiscoverCategory = item.dataset.category;
+        
+        if (isMapView) renderGalaxyMap();
+        else loadDiscoverServers();
+    };
+});
+
+// Arama
+document.getElementById('discover-search-input').oninput = (e) => {
+    discoverSearchQuery = e.target.value.toLowerCase().trim();
+    if (!isMapView) loadDiscoverServers();
+};
+
+// Sıralama
+document.getElementById('discover-sort-select').onchange = (e) => {
+    discoverSortBy = e.target.value;
+    if (!isMapView) loadDiscoverServers();
+};
+
+const loadDiscoverServers = async () => {
+    const grid = document.getElementById('discover-results-grid');
+    grid.innerHTML = '<div style="color: grey; grid-column: 1/-1; text-align: center; padding: 50px;">Galaksiler taranıyor... 🛸</div>';
+
+    try {
+        let q = query(collection(db, 'servers'), where('isPublic', '==', true));
+        
+        if (currentDiscoverCategory !== 'all') {
+            q = query(q, where('category', '==', currentDiscoverCategory));
+        }
+
+        const snap = await getDocs(q);
+        let servers = [];
+        snap.forEach(doc => {
+            const data = doc.data();
+            data.id = doc.id;
+            
+            // Arama filtresi (Client-side for simplicity in MVP)
+            if (discoverSearchQuery && !data.name.toLowerCase().includes(discoverSearchQuery) && !data.description?.toLowerCase().includes(discoverSearchQuery)) {
+                return;
+            }
+            servers.push(data);
+        });
+
+        // Sorting
+        if (discoverSortBy === 'newest') {
+            servers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        } else if (discoverSortBy === 'members') {
+            servers.sort((a, b) => (b.memberCount || 0) - (a.memberCount || 0));
+        } else {
+            // Popularity: Score = members + (active * 5)
+            servers.sort((a, b) => {
+                const scoreA = (a.memberCount || 0) + (a.activeMemberCount || 0) * 5;
+                const scoreB = (b.memberCount || 0) + (b.activeMemberCount || 0) * 5;
+                return scoreB - scoreA;
+            });
+        }
+
+        if (servers.length === 0) {
+            grid.innerHTML = '<div style="color: grey; grid-column: 1/-1; text-align: center; padding: 50px;">Bu sektörde hiç galaksi bulunamadı. 🌌</div>';
+            return;
+        }
+
+        grid.innerHTML = '';
+        servers.forEach(server => {
+            const card = document.createElement('div');
+            card.className = 'server-card';
+            card.onclick = () => openServerDetail(server);
+            
+            const banner = server.bannerURL || 'https://images.unsplash.com/photo-1464802686167-b939a67e06a1?q=80&w=2069&auto=format&fit=crop';
+            const logoText = server.name.charAt(0).toUpperCase();
+            
+            card.innerHTML = `
+                <div class="server-card-banner" style="background-image: url('${banner}')">
+                    <div class="server-card-logo" style="${server.logoURL ? `background-image: url(${server.logoURL}); color: transparent;` : ''}">${logoText}</div>
+                </div>
+                <div class="server-card-content">
+                    <div class="server-card-title">${server.name}</div>
+                    <div class="server-card-desc">${server.description || 'Bu galaksi henüz bir keşif raporu yayınlamadı.'}</div>
+                    <div class="server-card-footer">
+                        <div class="member-badge">
+                            <i data-lucide="users" style="width: 14px;"></i>
+                            <span>${server.memberCount || 0} Üye</span>
+                        </div>
+                        <div class="member-badge">
+                            <div class="online-dot"></div>
+                            <span>${server.activeMemberCount || 0} Aktif</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+        lucide.createIcons();
+
+    } catch (err) {
+        grid.innerHTML = `<div style="color: var(--error-color); grid-column: 1/-1; text-align: center;">Tarama hatası: ${err.message}</div>`;
+    }
+};
+
+// SERVER DETAIL MODAL
+let detailTargetServerId = null;
+
+const openServerDetail = (server) => {
+    detailTargetServerId = server.id;
+    const modal = document.getElementById('server-detail-modal');
+    modal.classList.remove('hidden');
+
+    document.getElementById('detail-banner').style.backgroundImage = `url('${server.bannerURL || 'https://images.unsplash.com/photo-1464802686167-b939a67e06a1?q=80&w=2069&auto=format&fit=crop'}')`;
+    const logo = document.getElementById('detail-logo');
+    logo.innerText = server.name.charAt(0).toUpperCase();
+    if (server.logoURL) {
+        logo.style.backgroundImage = `url('${server.logoURL}')`;
+        logo.style.color = 'transparent';
+    } else {
+        logo.style.backgroundImage = 'none';
+        logo.style.color = 'black';
+    }
+
+    document.getElementById('detail-name').innerText = server.name;
+    document.getElementById('detail-description').innerText = server.description || 'Açıklama belirtilmemiş.';
+    document.getElementById('detail-member-count').innerText = server.memberCount || 0;
+    document.getElementById('detail-active-count').innerText = server.activeMemberCount || 0;
+
+    const tagsContainer = document.getElementById('detail-tags');
+    tagsContainer.innerHTML = (server.tags || []).map(t => `<span style="background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px; font-size: 11px; color: gold;">#${t}</span>`).join('');
+    
+    // Katılım Kontrolü
+    const user = auth.currentUser;
+    const isMember = server.members?.includes(user?.uid);
+    const joinBtn = document.getElementById('detail-join-btn');
+    
+    if (isMember) {
+        joinBtn.innerText = "ZATEN ÜYESİNİZ";
+        joinBtn.disabled = true;
+        joinBtn.style.opacity = "0.5";
+    } else {
+        joinBtn.innerText = "GALAKSİYE KATIL";
+        joinBtn.disabled = false;
+        joinBtn.style.opacity = "1";
+    }
+
+    lucide.createIcons();
+};
+
+document.getElementById('detail-close-btn').onclick = () => {
+    document.getElementById('server-detail-modal').classList.add('hidden');
+};
+
+document.getElementById('detail-join-btn').onclick = async () => {
+    if (!detailTargetServerId) return;
+    try {
+        await joinServerById(detailTargetServerId);
+        document.getElementById('server-detail-modal').classList.add('hidden');
+        document.getElementById('discover-overlay').classList.add('hidden');
+        showToast("Başarıyla katıldınız! Hoş geldiniz.", "success");
+    } catch (err) {
+        showToast("Katılma hatası: " + err.message, "error");
+    }
+};
+
+// HELPER: Join Server by ID
+const joinServerById = async (serverId) => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Giriş yapmalısınız.");
+
+    const serverRef = doc(db, 'servers', serverId);
+    const serverSnap = await getDoc(serverRef);
+    if (!serverSnap.exists()) throw new Error("Sunucu bulunamadı.");
+
+    const data = serverSnap.data();
+    if (data.members.includes(user.uid)) return;
+
+    // Onay gerekiyor mu?
+    if (data.requiresApproval) {
+        const requestRef = doc(db, 'servers', serverId, 'joinRequests', user.uid);
+        const requestSnap = await getDoc(requestRef);
+        if (requestSnap.exists()) {
+            throw new Error("Katılım isteğiniz zaten beklemede.");
+        }
+        await setDoc(requestRef, {
+            uid: user.uid,
+            username: user.displayName,
+            photoURL: user.photoURL,
+            requestedAt: Date.now(),
+            status: 'pending'
+        });
+        showToast("Katılım isteği gönderildi.", "success");
+        return;
+    }
+
+    // Üye listesini güncelle
+    const newMembers = [...data.members, user.uid];
+    await updateDoc(serverRef, { 
+        members: newMembers,
+        memberCount: (data.memberCount || 0) + 1
+    });
+
+    // Sub-collection'a ekle
+    await setDoc(doc(db, 'servers', serverId, 'members', user.uid), {
+        uid: user.uid,
+        username: user.displayName,
+        photoURL: user.photoURL,
+        joinedAt: Date.now(),
+        roles: []
+    });
+
+    listenToServers(); // Listeyi yenile
+};
+
+
+// --- MESSAGE EFFECTS PICKER ---
+const effectBtn = document.getElementById('msg-effect-btn');
+const effectPicker = document.getElementById('effect-picker');
+
+if (effectBtn) {
+    effectBtn.onclick = (e) => {
+        e.stopPropagation();
+        effectPicker?.classList.toggle('hidden');
+    };
+}
+
+document.querySelectorAll('#effect-picker .popover-item').forEach(item => {
+    item.onclick = () => {
+        currentMessageEffect = item.dataset.effect;
+        if (currentMessageEffect === 'none') {
+            effectBtn.style.color = 'var(--text-secondary)';
+            effectBtn.innerHTML = '<i data-lucide="sparkles"></i>';
+        } else {
+            effectBtn.style.color = 'var(--brand-color)';
+            effectBtn.innerHTML = '<i data-lucide="sparkles" class="effect-neon"></i>';
+            showToast(`${item.innerText} aktif! Sonraki mesajın büyüleyici olacak. 💫`, "success");
+        }
+        effectPicker.classList.add('hidden');
+        lucide.createIcons();
+    };
+});
+
+// --- GALAXY MAP LOGIC ---
+const toggleViewBtn = document.getElementById('toggle-discovery-view');
+const gridView = document.getElementById('discover-results-grid');
+const mapView = document.getElementById('discover-galaxy-map');
+const nodesContainer = document.getElementById('galaxy-nodes-container');
+
+if (toggleViewBtn) {
+    toggleViewBtn.onclick = () => {
+        isMapView = !isMapView;
+        if (isMapView) {
+            gridView.classList.add('hidden');
+            mapView.classList.remove('hidden');
+            toggleViewBtn.innerHTML = '<i data-lucide="layout-grid"></i> Liste Görünümü';
+            renderGalaxyMap();
+        } else {
+            gridView.classList.remove('hidden');
+            mapView.classList.add('hidden');
+            toggleViewBtn.innerHTML = '<i data-lucide="map"></i> Galaksi Haritası';
+            loadDiscoverServers(); // Listeyi tekrar yükle
+        }
+        lucide.createIcons();
+    };
+}
+
+const renderGalaxyMap = async () => {
+    if (!nodesContainer) return;
+    nodesContainer.innerHTML = '';
+    
+    const q = query(collection(db, 'servers'), where('isPublic', '==', true), limit(50));
+    const snap = await getDocs(q);
+    
+    snap.forEach(docSnap => {
+        const server = docSnap.data();
+        const id = docSnap.id;
+        
+        // Determinate position based on ID (to stay consistent)
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
+        
+        const x = 1700 + (hash % 600);
+        const y = 1700 + ((hash >> 8) % 600);
+        const size = 50 + (server.memberCount || 0) * 3;
+        
+        const node = document.createElement('div');
+        node.className = 'server-star';
+        node.style.cssText = `
+            position: absolute;
+            left: ${x}px;
+            top: ${y}px;
+            width: ${size}px;
+            height: ${size}px;
+            background: ${server.atmosphere === 'supernova' ? '#ff4757' : (server.atmosphere === 'nebula' ? '#a000ff' : 'var(--brand-color)')};
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 30px ${server.atmosphere === 'supernova' ? 'rgba(255, 71, 87, 0.5)' : (server.atmosphere === 'nebula' ? 'rgba(160, 0, 255, 0.5)' : 'rgba(0, 255, 255, 0.5)')}, inset 0 0 10px white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s;
+            z-index: 10;
+            border: 2px solid white;
+        `;
+        
+        node.innerHTML = `
+            <div style="position: absolute; bottom: -25px; white-space: nowrap; font-size: 11px; font-weight: 800; color: white; text-shadow: 0 2px 4px #000;">
+                ${server.name}
+            </div>
+            <img src="${server.logoURL || `https://ui-avatars.com/api/?name=${server.name}&background=random`}" style="width: 80%; height: 80%; border-radius: 50%; object-fit: cover;">
+        `;
+        
+        node.onclick = () => {
+            document.getElementById('discover-overlay').classList.add('hidden');
+            joinServerById(id);
+        };
+        
+        node.onmouseenter = () => node.style.transform = 'scale(1.2)';
+        node.onmouseleave = () => node.style.transform = 'scale(1)';
+        
+        nodesContainer.appendChild(node);
+    });
+
+    // Başlangıçta zoom uygula
+    nodesContainer.style.transform = `scale(${mapZoom})`;
+};
+
+// Map Drag & Zoom Functionality
+let isDraggingMap = false;
+let mapStartX, mapStartY;
+let mapZoom = 0.5; // Start a bit zoomed out to see more stars
+
+if (mapView) {
+    // Zoom Logic
+    mapView.onwheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.05 : 0.05;
+        mapZoom = Math.min(Math.max(0.1, mapZoom + delta), 2); // 0.1x ile 2x arasnda
+        nodesContainer.style.transform = `scale(${mapZoom})`;
+    };
+
+    mapView.onmousedown = (e) => {
+        isDraggingMap = true;
+        mapStartX = e.clientX - nodesContainer.offsetLeft;
+        mapStartY = e.clientY - nodesContainer.offsetTop;
+        mapView.style.cursor = 'grabbing';
+    };
+    
+    window.onmousemove = (e) => {
+        if (!isDraggingMap) return;
+        // Zoom seviyesine göre sürükleme hızını ayarla
+        const x = (e.clientX - mapStartX);
+        const y = (e.clientY - mapStartY);
+        nodesContainer.style.left = `${x}px`;
+        nodesContainer.style.top = `${y}px`;
+    };
+    
+    window.onmouseup = () => {
+        isDraggingMap = false;
+        if (mapView) mapView.style.cursor = 'grab';
+    };
+}
+
+// --- IMAGE CROPPER & UPLOAD LOGIC ---
+let activeCropper = null;
+
+const openCropper = (file, aspect, callback) => {
+    const modal = document.getElementById('cropper-modal');
+    const image = document.getElementById('cropper-image');
+    if (!modal || !image) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        image.src = e.target.result;
+        modal.classList.remove('hidden');
+
+        if (activeCropper) activeCropper.destroy();
+        activeCropper = new Cropper(image, {
+            aspectRatio: aspect,
+            viewMode: 1,
+            autoCropArea: 1,
+            responsive: true,
+        });
+    };
+    reader.readAsDataURL(file);
+
+    document.getElementById('cropper-save-btn').onclick = () => {
+        const canvas = activeCropper.getCroppedCanvas();
+        canvas.toBlob((blob) => {
+            callback(blob);
+            modal.classList.add('hidden');
+            activeCropper.destroy();
+            activeCropper = null;
+        }, 'image/jpeg', 0.8);
+    };
+
+    document.getElementById('cropper-cancel-btn').onclick = () => {
+        modal.classList.add('hidden');
+        if (activeCropper) activeCropper.destroy();
+        activeCropper = null;
+    };
+};
+
+const handleImageUpload = (inputId, aspect, path, onComplete) => {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        openCropper(file, aspect, async (blob) => {
+            try {
+                showToast("Görsel yükleniyor...", "info");
+                const storageRef = ref(storage, `${path}/${Date.now()}.jpg`);
+                const snapshot = await uploadBytesResumable(storageRef, blob);
+                const url = await getDownloadURL(snapshot.ref);
+                onComplete(url);
+                showToast("Görsel başarıyla güncellendi! ✨", "success");
+            } catch (err) {
+                showToast("Yükleme hatası: " + err.message, "error");
+            }
+        });
+    };
+};
+
+// Hook up all upload inputs
+handleImageUpload('pfp-file-input', 1, 'profiles', async (url) => {
+    const user = auth.currentUser;
+    await updateProfile(user, { photoURL: url });
+    await updateDoc(doc(db, 'users', user.uid), { photoURL: url });
+    const pfpPreview = document.getElementById('settings-pfp-preview');
+    if (pfpPreview) pfpPreview.src = url;
+});
+
+handleImageUpload('banner-file-input', 3/1, 'banners', async (url) => {
+    const user = auth.currentUser;
+    await updateDoc(doc(db, 'users', user.uid), { bannerURL: url });
+});
+
+handleImageUpload('server-logo-file', 1, 'server_logos', async (url) => {
+    if (!currentServerId) return;
+    await updateDoc(doc(db, 'servers', currentServerId), { logoURL: url });
+});
+
+handleImageUpload('server-banner-file', 2/1, 'server_banners', async (url) => {
+    if (!currentServerId) return;
+    await updateDoc(doc(db, 'servers', currentServerId), { bannerURL: url });
+});

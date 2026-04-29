@@ -22,7 +22,8 @@ import {
     ref, 
     onValue, 
     set, 
-    onDisconnect 
+    onDisconnect,
+    serverTimestamp as rtdbTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 // --- AUTH FUNCTIONS ---
@@ -61,6 +62,8 @@ const syncUserToFirestore = async (user) => {
         email: user.email,
         photoURL: user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'User'}&background=random`,
         status: 'online',
+        level: 1,
+        xp: 0,
         createdAt: serverTimestamp()
     };
     
@@ -78,18 +81,18 @@ export const setupPresence = (uid) => {
 
         onDisconnect(userStatusRef).set({
             state: 'offline',
-            last_changed: serverTimestamp()
+            last_changed: rtdbTimestamp()
         }).then(() => {
             set(userStatusRef, {
                 state: 'online',
-                last_changed: serverTimestamp()
-            }).catch(err => console.error("Presence status set error:", err));
+                last_changed: rtdbTimestamp()
+            }).catch(err => console.warn("Presence set error (Check RTDB Rules):", err));
             
             updateDoc(doc(db, 'users', uid), { 
                 status: 'online',
-                lastSeen: serverTimestamp() 
-            }).catch(err => console.error("Firestore status update error:", err));
-        });
+                lastSeen: serverTimestamp() // Bu Firestore için olduğu için doğru
+            }).catch(err => console.warn("Firestore status update error:", err));
+        }).catch(err => console.warn("onDisconnect error (Check RTDB Rules):", err));
     });
 };
 
