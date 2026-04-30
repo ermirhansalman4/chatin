@@ -369,6 +369,7 @@ body {
 }
 
 #message-input-wrapper {
+    position: relative;
     background: rgba(30,31,60,0.6);
     border: 1px solid var(--border-gold);
     border-radius: 12px;
@@ -383,7 +384,7 @@ body {
     background: transparent;
     border: none;
     color: white;
-    padding: 10px 0;
+    padding: 10px 10px 10px 0; /* Sağdan boşluk eklendi */
     outline: none;
     font-size: 14px;
 }
@@ -1307,4 +1308,12 @@ body {
 @keyframes slideUp {
     from { transform: translate(-50%, 50px); opacity: 0; }
     to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.command-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(5px);
+}
+.command-item:active {
+    background: rgba(197, 160, 89, 0.2);
 }

@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chatin</title>
+    <title>Chatin | Galaktik İletişim Platformu</title>
+    <meta name="description" content="Chatin: Galaksiler arası iletişim platformu. 3D evrende yeni sunucuları keşfedin, arkadaşlarınızla sesli ve yazılı sohbet edin, kendi galaksinizi oluşturun.">
+    <meta name="keywords" content="chatin, galaksi, chat, sohbet, webrtc, 3d galaxy, iletişim, discord clone, futuristic chat">
+    <meta name="author" content="Emirhan Salman">
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="icon" href="logo.png" type="image/png">
@@ -180,11 +183,20 @@
                     <input type="file" id="chat-media-input" class="hidden" accept="image/*">
                     <span id="msg-plus-icon" style="cursor: pointer; color: var(--brand-color);" onclick="document.getElementById('chat-media-input').click()"><i data-lucide="plus-circle"></i></span>
                     <input type="text" id="chat-input" placeholder="Mesajınızı gönderin...">
+                    
+                    <!-- Slash Command Menu -->
+                    <div id="command-menu" class="hidden" style="position: absolute; bottom: 60px; left: 0; background: var(--bg-side); border: 1px solid var(--border-gold); border-radius: 12px; width: 280px; max-width: calc(100% - 40px); max-height: 250px; overflow-y: auto; z-index: 10001; box-shadow: 0 10px 40px rgba(0,0,0,0.5); backdrop-filter: blur(10px);">
+                        <div style="padding: 10px; font-size: 10px; color: var(--brand-color); font-weight: 800; border-bottom: 1px solid rgba(255,255,255,0.05); letter-spacing: 1px;">GALAKTİK KOMUTLAR</div>
+                        <div id="command-items-container">
+                            <!-- Items will be injected here -->
+                        </div>
+                    </div>
+
                     <div class="input-actions" style="position: relative; display: flex; gap: 12px; align-items: center;">
                         <span id="file-btn" title="Dosya Ekle" style="cursor: pointer; color: var(--text-secondary);" onclick="document.getElementById('chat-media-input').click()"><i data-lucide="paperclip"></i></span>
                         <span id="msg-effect-btn" title="Kozmik Efektler" style="cursor: pointer; color: var(--text-secondary);"><i data-lucide="sparkles"></i></span>
                         <span id="emoji-btn" title="Emoji" style="cursor: pointer; color: var(--text-secondary);"><i data-lucide="smile"></i></span>
-
+                        
                         <!-- Effect Picker -->
                         <div id="effect-picker" class="hidden" style="position: absolute; bottom: 50px; right: 0; background: var(--bg-side); border: 1px solid var(--border-gold); border-radius: 12px; padding: 12px; width: 200px; z-index: 1000;">
                             <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 800;">KOZMİK EFEKTLER</div>

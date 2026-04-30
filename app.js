@@ -888,10 +888,22 @@ const initGlobalDMListener = () => {
 
 // --- CHAT INPUT & SENDING ---
 if (chatInput) {
+    chatInput.oninput = (e) => {
+        const val = e.target.value;
+        if (val.startsWith('/')) {
+            renderCommandMenu(val);
+        } else {
+            document.getElementById('command-menu')?.classList.add('hidden');
+        }
+    };
+
     chatInput.onkeypress = (e) => {
         if (e.key === 'Enter') {
             const val = chatInput.value.trim();
             if (!val) return;
+            
+            document.getElementById('command-menu')?.classList.add('hidden');
+
             if (isDMMode && currentDMRecipientId) {
                 sendDM(val);
             } else if (currentChannelId) {
@@ -999,21 +1011,80 @@ export const sendMessage = async (content, isFile = false) => {
     }
 };
 
+const commands = [
+    { cmd: '/yardım', desc: 'Tüm komutları listeler', icon: 'help-circle' },
+    { cmd: '/seviye', desc: 'Mevcut XP ve seviyeni gösterir', icon: 'trending-up' },
+    { cmd: '/kurallar', desc: 'Galaktik kuralları listeler', icon: 'scroll' },
+    { cmd: '/zar', desc: '1-6 arası zar atar', icon: 'dice-5' },
+    { cmd: '/ping', desc: 'Gecikme süresini ölçer', icon: 'zap' },
+    { cmd: '/temizle', desc: 'Sohbet ekranını temizler (Sadece sende)', icon: 'trash-2' },
+    { cmd: '/profil', desc: 'Kendi profilini açar', icon: 'user' },
+    { cmd: '/galaksi', desc: '3D Galaksi haritasını açar', icon: 'orbit' }
+];
+
+const renderCommandMenu = (filter = '') => {
+    const menu = document.getElementById('command-menu');
+    const container = document.getElementById('command-items-container');
+    if (!menu || !container) return;
+
+    const queryStr = filter.toLowerCase();
+    const filtered = commands.filter(c => c.cmd.includes(queryStr));
+    
+    if (filtered.length === 0 || !filter.startsWith('/')) {
+        menu.classList.add('hidden');
+        return;
+    }
+
+    container.innerHTML = filtered.map(c => `
+        <div class="command-item" data-cmd="${c.cmd}" style="padding: 10px 15px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: 0.2s; border-bottom: 1px solid rgba(255,255,255,0.02);">
+            <i data-lucide="${c.icon}" style="width: 14px; color: var(--brand-color);"></i>
+            <div style="flex: 1;">
+                <div style="font-size: 13px; font-weight: 700; color: white;">${c.cmd}</div>
+                <div style="font-size: 11px; color: var(--text-secondary);">${c.desc}</div>
+            </div>
+        </div>
+    `).join('');
+
+    menu.classList.remove('hidden');
+    lucide.createIcons();
+
+    container.querySelectorAll('.command-item').forEach(item => {
+        item.onclick = () => {
+            chatInput.value = item.dataset.cmd + ' ';
+            chatInput.focus();
+            menu.classList.add('hidden');
+        };
+    });
+};
+
 const handleBotCommand = async (cmd, channelId, user) => {
-    const command = cmd.toLowerCase().split(' ')[0];
+    const parts = cmd.toLowerCase().split(' ');
+    const command = parts[0];
     let botMsg = "";
 
     if (command === '/yardım') {
         botMsg = `Merhaba **${user.displayName}**! Ben Galaktik Rehber. Sana şu komutlarla yardımcı olabilirim:\n\n` +
-                 `🌟 **/seviye** - Mevcut XP ve Seviyeni gösterir.\n` +
-                 `📜 **/kurallar** - Galaktik topluluk kurallarını listeler.\n` +
-                 `🌌 **/istatistik** - Evrenin güncel durumunu söyler.`;
+                 commands.map(c => `🌟 **${c.cmd}** - ${c.desc}`).join('\n');
     } else if (command === '/kurallar') {
         botMsg = `**GALAKTİK KURALLAR:**\n1. Diğer yolculara saygılı davran.\n2. Spam yaparak kara delik oluşturma.\n3. Kozmik barışı koru!`;
     } else if (command === '/seviye') {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         const d = userDoc.data();
         botMsg = `🌟 **${user.displayName}**\n**Seviye:** ${d.level || 1}\n**XP:** ${d.xp || 0} / ${(d.level || 1) * 100}`;
+    } else if (command === '/zar') {
+        const result = Math.floor(Math.random() * 6) + 1;
+        botMsg = `🎲 **${user.displayName}** zar attı ve **${result}** geldi!`;
+    } else if (command === '/ping') {
+        botMsg = `📡 Galaktik gecikme süresi: **${Math.floor(Math.random() * 50) + 10}ms**. Bağlantı stabil Pilot!`;
+    } else if (command === '/temizle') {
+        messageList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">Sohbet geçmişi senin için temizlendi. ✨</div>';
+        return;
+    } else if (command === '/profil') {
+        window.openUserProfile(user);
+        return;
+    } else if (command === '/galaksi') {
+        document.getElementById('explore-servers-btn')?.click();
+        return;
     }
 
     if (botMsg) {
@@ -1025,7 +1096,7 @@ const handleBotCommand = async (cmd, channelId, user) => {
             photoURL: 'https://cdn-icons-png.flaticon.com/512/2592/2592231.png',
             createdAt: serverTimestamp(),
             isBot: true,
-            level: 999 // Bot her zaman son seviye!
+            level: 999
         });
     }
 };
@@ -3775,7 +3846,7 @@ const init3DUniverse = async () => {
         const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
         const sprite = new THREE.Sprite(material);
         sprite.scale.set(70, 17.5, 1);
-        sprite.position.y = 40;
+        sprite.position.y = 75; // İsmi daha yukarı taşıdık
         return sprite;
     }
 
@@ -3783,29 +3854,82 @@ const init3DUniverse = async () => {
         const geometry = new THREE.SphereGeometry(30, 64, 64);
         const loader = new THREE.TextureLoader();
         loader.setCrossOrigin('anonymous');
-        let material;
-        if (data.logoURL) {
-            const texture = loader.load(data.logoURL);
-            material = new THREE.MeshStandardMaterial({ 
-                map: texture, metalness: 0.4, roughness: 0.6,
-                emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.05
-            });
-        } else {
-            const randomTex = planetTextures[idx % planetTextures.length];
-            const texture = loader.load(randomTex);
-            material = new THREE.MeshStandardMaterial({ 
-                map: texture, metalness: 0.3, roughness: 0.8,
-                emissive: new THREE.Color(0x222222), emissiveIntensity: 0.1
-            });
-        }
+        
+        const colors = [0x4444ff, 0x00ced1, 0xffd700, 0x8a2be2, 0xff4757];
+        const pColor = colors[idx % colors.length];
+
+        // Daima rastgele bir gezegen dokusu kullan (Logoyu üstte yüzen sprite olarak kullanacağız)
+        const randomTex = planetTextures[idx % planetTextures.length];
+        const texture = loader.load(randomTex);
+        const material = new THREE.MeshStandardMaterial({ 
+            map: texture, metalness: 0.3, roughness: 0.8,
+            emissive: new THREE.Color(pColor), emissiveIntensity: 0.15
+        });
+        
         const planet = new THREE.Mesh(geometry, material);
         const angle = idx * 0.8;
-        const radius = 180 + idx * 55;
-        planet.position.set(Math.cos(angle) * radius, (Math.random() - 0.5) * 80, Math.sin(angle) * radius);
+        const radius = 220 + idx * 60;
+        planet.position.set(Math.cos(angle) * radius, (Math.random() - 0.5) * 100, Math.sin(angle) * radius);
         planet.userData = { id, ...data };
-        const glowGeo = new THREE.SphereGeometry(32, 64, 64);
-        const glowMat = new THREE.MeshBasicMaterial({ color: 0x4444ff, transparent: true, opacity: 0.15, side: THREE.BackSide });
+        
+        // 1. Holographic Floating Logo (Clean - No Beam)
+        if (data.logoURL) {
+            const logoTex = loader.load(data.logoURL);
+            const spriteMat = new THREE.SpriteMaterial({ 
+                map: logoTex, 
+                transparent: true, 
+                opacity: 0.9,
+                depthTest: false
+            });
+            const logoSprite = new THREE.Sprite(spriteMat);
+            logoSprite.scale.set(25, 25, 1);
+            logoSprite.position.y = 45; // Logoyu gezegene biraz daha yaklaştırdık
+            planet.add(logoSprite);
+        }
+
+        // 2. Popular Server Rings (Saturn Style)
+        const isPopular = (data.memberCount || 0) >= 5;
+        if (isPopular) {
+            const ringGeo = new THREE.RingGeometry(40, 55, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ 
+                color: pColor, 
+                transparent: true, 
+                opacity: 0.4, 
+                side: THREE.DoubleSide 
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2.5;
+            planet.add(ring);
+            
+            // İkinci ince halka
+            const ringGeo2 = new THREE.RingGeometry(58, 60, 64);
+            const ring2 = new THREE.Mesh(ringGeo2, ringMat);
+            ring2.rotation.x = Math.PI / 2.5;
+            planet.add(ring2);
+        }
+
+        // 3. Atmospheric Aura (Glow)
+        const glowGeo = new THREE.SphereGeometry(33, 64, 64);
+        const glowMat = new THREE.MeshBasicMaterial({ 
+            color: pColor, 
+            transparent: true, 
+            opacity: 0.15, 
+            side: THREE.BackSide 
+        });
         planet.add(new THREE.Mesh(glowGeo, glowMat));
+
+        // 4. Data Stream Rings (Orbiting Particles/Lines)
+        const orbitGroup = new THREE.Group();
+        const orbitLineGeo = new THREE.TorusGeometry(38, 0.2, 16, 100);
+        const orbitLineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+        const orbitLine = new THREE.Mesh(orbitLineGeo, orbitLineMat);
+        orbitLine.rotation.x = Math.random() * Math.PI;
+        orbitLine.rotation.y = Math.random() * Math.PI;
+        orbitGroup.add(orbitLine);
+        
+        planet.add(orbitGroup);
+        planet.userData.orbitGroup = orbitGroup; // Animasyon için sakla
+
         planet.add(createTextLabel(data.name));
         planets.push(planet);
         universeScene.add(planet);
@@ -3872,8 +3996,14 @@ const init3DUniverse = async () => {
     const animate = () => {
         requestAnimationFrame(animate);
         
-        // Gezegenleri Döndür
-        planets.forEach(p => p.rotation.y += 0.01);
+        // Gezegenleri ve Halkaları Döndür
+        planets.forEach(p => {
+            p.rotation.y += 0.005;
+            if (p.userData.orbitGroup) {
+                p.userData.orbitGroup.rotation.y += 0.02;
+                p.userData.orbitGroup.rotation.z += 0.01;
+            }
+        });
         
         // Yumuşak Kamera Navigasyonu (Lerp)
         if (isNavigating) {
