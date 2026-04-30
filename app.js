@@ -70,8 +70,6 @@ let myFriends = [];
 let currentVoiceChannelId = null;
 let isDMMode = false;
 let unsubscribeDMs = null;
-let isMicMuted = false;
-let isDeafened = false;
 
 // FRIENDSHIP UI ELEMENTS (GLOBAL)
 let friendsModal, userSearchInput, userSearchResults, incomingRequestsList, friendRequestBadge, requestsTabBadge, dmSidebarTrigger;
