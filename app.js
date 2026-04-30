@@ -70,6 +70,8 @@ let myFriends = [];
 let currentVoiceChannelId = null;
 let isDMMode = false;
 let unsubscribeDMs = null;
+let isMicMuted = false;
+let isDeafened = false;
 
 // FRIENDSHIP UI ELEMENTS (GLOBAL)
 let friendsModal, userSearchInput, userSearchResults, incomingRequestsList, friendRequestBadge, requestsTabBadge, dmSidebarTrigger;
@@ -1583,6 +1585,7 @@ export const switchChannel = async (channelId, channelName, type = 'text') => {
     if (currentVoiceChannelId && currentVoiceChannelId !== channelId) {
         await leaveVoiceChannel(currentVoiceChannelId);
         currentVoiceChannelId = null;
+        window.currentVoiceChannelId = null;
         if (unsubscribeVoiceMembers) unsubscribeVoiceMembers();
         
         const soundEnabled = localStorage.getItem('chatin-sound-enabled') !== 'false';
@@ -1595,6 +1598,7 @@ export const switchChannel = async (channelId, channelName, type = 'text') => {
 
     if (type === 'voice') {
         currentVoiceChannelId = channelId;
+        window.currentVoiceChannelId = channelId;
         await joinVoiceChannel(channelId);
 
         chatHeaderName.innerText = `🔊 ${channelName}`;
@@ -2762,6 +2766,8 @@ document.addEventListener('click', async (e) => {
         document.getElementById('voice-settings-modal')?.classList.remove('hidden');
         lucide.createIcons();
     }
+    
+    // Mobil Sidebar Toggles
     if (e.target.closest('#mobile-sidebar-toggle')) {
         document.body.classList.toggle('show-sidebar');
         document.body.classList.remove('show-members');
@@ -2770,7 +2776,15 @@ document.addEventListener('click', async (e) => {
         document.body.classList.toggle('show-members');
         document.body.classList.remove('show-sidebar');
     }
-    if (e.target.closest('#chat-messages') || e.target.closest('#chat-input')) {
+    
+    // Close sidebar on overlay click
+    if (e.target.closest('#sidebar-overlay')) {
+        document.body.classList.remove('show-sidebar');
+        document.body.classList.remove('show-members');
+    }
+
+    // Close sidebars when clicking on messages or input on mobile
+    if (window.innerWidth <= 1024 && (e.target.closest('#chat-messages') || e.target.closest('#chat-input') || e.target.closest('.channel-item') || e.target.closest('.server-icon'))) {
         document.body.classList.remove('show-sidebar');
         document.body.classList.remove('show-members');
     }
@@ -3889,7 +3903,7 @@ const showPlanetDetails = (data) => {
     document.getElementById('planet-detail-members').innerText = `${data.memberCount || 0} Üye`;
     document.getElementById('planet-detail-desc').innerText = data.description || "Bu galaksi henüz keşfedilmeyi bekliyor...";
     document.getElementById('join-planet-btn').onclick = () => {
-        joinServer(data.id);
+        joinServerById(data.id);
         document.getElementById('discover-overlay').classList.add('hidden');
     };
     box.classList.remove('hidden');

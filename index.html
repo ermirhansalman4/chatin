@@ -44,7 +44,7 @@
 <body>
     <!-- AUTH OVERLAY -->
     <div id="auth-overlay">
-        <div class="auth-card" style="background: var(--bg-side); padding: 40px; border-radius: 24px; border: 1px solid var(--border-gold); text-align: center; width: 400px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9000;">
+        <div class="auth-card" style="background: var(--bg-side); padding: 40px; border-radius: 24px; border: 1px solid var(--border-gold); text-align: center; width: 90%; max-width: 400px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9000;">
             <h2 style="color: var(--brand-color); margin-bottom: 20px;">Galaksiye Giriş Yap</h2>
             
             <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 20px; text-align: left;">
@@ -64,6 +64,7 @@
 
     <!-- MAIN APP SHELL -->
     <div id="app-container" class="hidden">
+        <div id="sidebar-overlay" class="hidden"></div>
         
         <!-- SIDEBAR -->
         <div id="server-sidebar">
@@ -206,15 +207,15 @@
         </div>
 
         <!-- MEMBER LIST (Right) -->
-        <div id="member-list" style="width: 240px; background: rgba(0,0,0,0.1); border-left: 1px solid var(--border-gold); padding: 20px;">
+        <div id="member-list" style="width: 240px; background: rgba(0,0,0,0.1); border-left: 1px solid var(--border-gold); padding: 20px; flex-shrink: 0;">
             <h5 style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Üyeler</h5>
             <div id="member-list-container" style="margin-top: 16px;"></div>
         </div>
     </div>
 
     <!-- MODALS -->
-    <div id="join-server-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 6000; display: flex; align-items: center; justify-content: center;">
-        <div class="settings-card" style="width: 360px; text-align: center;">
+    <div id="join-server-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 6000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div class="settings-card" style="width: 100%; max-width: 360px; text-align: center;">
             <h2 style="color: var(--brand-color); margin-bottom: 20px;">Bir Sunucuya Katıl</h2>
             <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-gold); border-radius: 8px; padding: 4px 12px; margin-bottom: 20px;">
                 <input type="text" id="join-invite-input" placeholder="Davet Kodu" style="width: 100%; background: transparent; border: none; color: white; padding: 10px; outline: none;">
@@ -225,8 +226,8 @@
     </div>
 
     <!-- VOICE SETTINGS MODAL -->
-    <div id="voice-settings-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 7000; display: flex; align-items: center; justify-content: center;">
-        <div class="settings-card" style="width: 420px; border: 1px solid var(--border-gold); background: var(--bg-side); border-radius: 20px; padding: 32px; box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
+    <div id="voice-settings-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 7000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div class="settings-card" style="width: 100%; max-width: 420px; border: 1px solid var(--border-gold); background: var(--bg-side); border-radius: 20px; padding: 32px; box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                 <h2 style="color: var(--brand-color); font-size: 20px;">Sesli Sohbet Ayarları</h2>
                 <i data-lucide="x" id="close-voice-settings" style="cursor: pointer; color: var(--text-secondary);"></i>
@@ -267,8 +268,8 @@
         </div>
     </div>
 
-    <div id="create-server-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 6000; display: flex; align-items: center; justify-content: center;">
-        <div class="settings-card" style="width: 360px; text-align: center;">
+    <div id="create-server-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 6000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div class="settings-card" style="width: 100%; max-width: 400px; text-align: center;">
             <h2 style="color: var(--brand-color); margin-bottom: 20px;">Sunucu Oluştur</h2>
             <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-gold); border-radius: 8px; padding: 4px 12px; margin-bottom: 15px;">
                 <input type="text" id="server-name-input" placeholder="Sunucu Adı" style="width: 100%; background: transparent; border: none; color: white; padding: 10px; outline: none;">
@@ -439,8 +440,8 @@
     </div>
 
     <!-- PROFILE MODAL -->
-    <div id="profile-modal-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 7000; display: flex; align-items: center; justify-content: center;">
-        <div class="profile-card" id="profile-view-mode" style="width: 420px; background: #05060f; border: 1px solid var(--border-gold); border-radius: 24px; overflow: hidden; position: relative;">
+    <div id="profile-modal-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 7000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div class="profile-card" id="profile-view-mode" style="width: 100%; max-width: 420px; background: #05060f; border: 1px solid var(--border-gold); border-radius: 24px; overflow: hidden; position: relative;">
             <!-- Animated Nebula Background for Profile -->
             <div id="profile-nebula-bg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.3; pointer-events: none;"></div>
             
@@ -561,15 +562,15 @@
 
         <!-- UI Elements Overlayed on 3D -->
         <div style="position: relative; z-index: 10; display: flex; flex-direction: column; height: 100%; pointer-events: none;">
-            <div style="padding: 30px; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); pointer-events: auto;">
+            <div id="discover-header" style="padding: 20px; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); pointer-events: auto; flex-wrap: wrap; gap: 15px;">
                 <div>
-                    <h1 style="color: var(--brand-color); margin: 0; font-size: 32px; font-weight: 800; text-shadow: 0 0 20px rgba(255,215,0,0.5);">SUNUCU GALAKSİSİ</h1>
-                    <p style="color: var(--text-secondary); margin: 0;">Keşfetmek için sürükle, katılmak için gezegenlere tıkla</p>
+                    <h1 class="discover-title" style="color: var(--brand-color); margin: 0; font-size: 28px; font-weight: 800; text-shadow: 0 0 20px rgba(255,215,0,0.5);">SUNUCU GALAKSİSİ</h1>
+                    <p class="discover-subtitle" style="color: var(--text-secondary); margin: 0; font-size: 13px;">Keşfetmek için sürükle, katılmak için gezegenlere tıkla</p>
                 </div>
-                <div style="display: flex; gap: 15px; align-items: center;">
-                    <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-gold); border-radius: 20px; padding: 10px 20px; display: flex; align-items: center; gap: 10px;">
-                        <i data-lucide="search" style="width: 18px; color: gold;"></i>
-                        <input type="text" id="discover-search-3d" placeholder="Gezegen ara..." style="background: transparent; border: none; color: white; outline: none; width: 200px;">
+                <div style="display: flex; gap: 10px; align-items: center; flex: 1; justify-content: flex-end;">
+                    <div id="discover-search-container" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-gold); border-radius: 20px; padding: 8px 16px; display: flex; align-items: center; gap: 10px; max-width: 300px; width: 100%;">
+                        <i data-lucide="search" style="width: 16px; color: gold;"></i>
+                        <input type="text" id="discover-search-3d" placeholder="Gezegen ara..." style="background: transparent; border: none; color: white; outline: none; width: 100%; font-size: 14px;">
                     </div>
                     <button class="auth-btn" id="close-discover-3d-btn" style="background: rgba(255,0,0,0.2); border-color: #ff4444; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0;">
                         <i data-lucide="x"></i>
@@ -578,7 +579,7 @@
             </div>
 
             <!-- Planet Detail Box -->
-            <div id="planet-detail-box" class="hidden" style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); background: rgba(5,6,15,0.9); border: 1px solid var(--border-gold); border-radius: 24px; padding: 30px; width: 400px; backdrop-filter: blur(20px); pointer-events: auto; box-shadow: 0 0 50px rgba(255,215,0,0.2);">
+            <div id="planet-detail-box" class="hidden" style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); background: rgba(5,6,15,0.9); border: 1px solid var(--border-gold); border-radius: 24px; padding: 20px; width: 90%; max-width: 400px; backdrop-filter: blur(20px); pointer-events: auto; box-shadow: 0 0 50px rgba(255,215,0,0.2);">
                 <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 20px;">
                     <img id="planet-detail-logo" src="" style="width: 80px; height: 80px; border-radius: 50%; border: 2px solid gold;">
                     <div>
@@ -592,8 +593,8 @@
         </div>
     </div>
 
-    <div id="admin-panel-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); z-index: 8000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
-        <div class="settings-card" style="width: 700px; height: 600px; display: flex; flex-direction: column; border: 2px solid gold; box-shadow: 0 0 50px rgba(255,215,0,0.15);">
+    <div id="admin-panel-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); z-index: 8000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); padding: 20px;">
+        <div class="settings-card" style="width: 100%; max-width: 700px; height: 90%; display: flex; flex-direction: column; border: 2px solid gold; box-shadow: 0 0 50px rgba(255,215,0,0.15);">
             <div style="padding: 24px; border-bottom: 1px solid rgba(255,215,0,0.2); margin-bottom: 20px;">
                 <h2 style="color: gold; display: flex; align-items: center; gap: 15px; margin: 0; font-size: 28px; letter-spacing: 1px;">
                     <i data-lucide="crown" style="width: 28px; height: 28px;"></i> KOMUTA MERKEZİ
@@ -629,8 +630,8 @@
 
     <!-- SERVER SETTINGS MODAL -->
     <!-- GLOBAL CUSTOM MODALS (CONFIRM & PROMPT) -->
-    <div id="custom-confirm-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 15000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px);">
-        <div class="settings-card" style="width: 400px; text-align: center; border: 1px solid var(--border-gold); background: var(--bg-side);">
+    <div id="custom-confirm-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 15000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); padding: 20px;">
+        <div class="settings-card" style="width: 100%; max-width: 400px; text-align: center; border: 1px solid var(--border-gold); background: var(--bg-side);">
             <div style="font-size: 48px; color: var(--error-color); margin-bottom: 20px;"><i data-lucide="alert-triangle"></i></div>
             <h3 id="confirm-title" style="color: var(--brand-color); margin-bottom: 12px; font-size: 20px;">Emin misiniz?</h3>
             <p id="confirm-msg" style="color: var(--text-secondary); margin-bottom: 32px; line-height: 1.5;">Bu işlem geri alınamaz.</p>
@@ -641,8 +642,8 @@
         </div>
     </div>
 
-    <div id="custom-prompt-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 15000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px);">
-        <div class="settings-card" style="width: 400px; text-align: center; border: 1px solid var(--border-gold); background: var(--bg-side);">
+    <div id="custom-prompt-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 15000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); padding: 20px;">
+        <div class="settings-card" style="width: 100%; max-width: 400px; text-align: center; border: 1px solid var(--border-gold); background: var(--bg-side);">
             <h3 id="prompt-title" style="color: var(--brand-color); margin-bottom: 20px; font-size: 20px;">Bilgi Girişi</h3>
             <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-gold); border-radius: 12px; padding: 4px 12px; margin-bottom: 24px;">
                 <input type="text" id="prompt-input" style="width: 100%; background: transparent; border: none; color: white; padding: 12px; outline: none; font-size: 16px;">

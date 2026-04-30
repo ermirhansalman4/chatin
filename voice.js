@@ -115,6 +115,9 @@ const initiateCall = async (channelId, targetUid) => {
     const offerCandidates = collection(offerDoc, 'offerCandidates');
     pc.onicecandidate = (event) => event.candidate && addDoc(offerCandidates, event.candidate.toJSON());
 
+    // Store offerDoc for renegotiation
+    pc.offerDoc = offerDoc;
+
     const offerDescription = await pc.createOffer();
     await pc.setLocalDescription(offerDescription);
 
@@ -123,19 +126,19 @@ const initiateCall = async (channelId, targetUid) => {
         type: offerDescription.type,
         senderUid: user.uid,
         targetUid: targetUid,
-        createdAt: Date.now()
+        createdAt: serverTimestamp() // Use serverTimestamp for consistency
     };
     await setDoc(offerDoc, offer);
 
     // RENEGOTIATION (Ekran paylaşımı açılıp kapandığında burası tetiklenir)
     pc.onnegotiationneeded = async () => {
-        if (pc.isSignaling || pc.signalingState !== 'stable') return;
+        if (pc.isSignaling || pc.signalingState !== 'stable' || !pc.offerDoc) return;
         try {
             pc.isSignaling = true;
             console.log("Renegotiation needed for:", targetUid);
             const newOffer = await pc.createOffer();
             await pc.setLocalDescription(newOffer);
-            await updateDoc(offerDoc, {
+            await updateDoc(pc.offerDoc, {
                 sdp: newOffer.sdp,
                 type: newOffer.type,
                 createdAt: serverTimestamp()
@@ -203,6 +206,9 @@ const handleIncomingCall = async (channelId, data, offerDocId) => {
     try {
         pc.isSignaling = true;
         pc.onicecandidate = (event) => event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
+        
+        // Store offerDoc for renegotiation
+        pc.offerDoc = offerDoc;
 
         await pc.setRemoteDescription(new RTCSessionDescription({ type: data.type, sdp: data.sdp }));
         
@@ -217,6 +223,26 @@ const handleIncomingCall = async (channelId, data, offerDocId) => {
         pc.isSignaling = false;
     }
 
+    // RENEGOTIATION for Receiver (if they start sharing)
+    pc.onnegotiationneeded = async () => {
+        if (pc.isSignaling || pc.signalingState !== 'stable' || !pc.offerDoc) return;
+        try {
+            pc.isSignaling = true;
+            console.log("Receiver renegotiating...");
+            const newOffer = await pc.createOffer();
+            await pc.setLocalDescription(newOffer);
+            await updateDoc(pc.offerDoc, {
+                sdp: newOffer.sdp,
+                type: newOffer.type,
+                createdAt: serverTimestamp()
+            });
+        } catch (e) {
+            console.error("Renegotiation error (receiver):", e);
+        } finally {
+            pc.isSignaling = false;
+        }
+    };
+
     onSnapshot(offerCandidates, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === 'added' && pc.remoteDescription) {
@@ -229,7 +255,9 @@ const handleIncomingCall = async (channelId, data, offerDocId) => {
 const createPeerConnection = (targetUid) => {
     const pc = new RTCPeerConnection(servers);
     pc.ontrack = (event) => {
-        const remoteStream = event.streams[0];
+        console.log("Track received:", event.track.kind, event.streams);
+        const remoteStream = event.streams[0] || new MediaStream([event.track]);
+        
         if (event.track.kind === 'audio') {
             let audio = document.getElementById(`audio-${targetUid}`);
             if (!audio) {
@@ -254,12 +282,16 @@ const createPeerConnection = (targetUid) => {
                     video = document.createElement('video');
                     video.autoplay = true;
                     video.playsInline = true;
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'contain';
                     display.appendChild(video);
                 }
-                if (video.srcObject !== remoteStream) {
-                    video.srcObject = remoteStream;
-                    video.play().catch(e => {});
-                }
+                // Force update srcObject for video tracks
+                video.srcObject = remoteStream;
+                video.play().catch(e => {
+                    console.error("Video play error:", e);
+                });
             }
         }
     };
@@ -313,6 +345,16 @@ export const startScreenShare = async () => {
         });
 
         screenStream.getVideoTracks()[0].onended = () => stopScreenShare();
+
+        // Firestore'da paylaşım durumunu güncelle (Mevcut kanaldaysa)
+        const user = auth.currentUser;
+        const activeVoiceChannelId = window.currentVoiceChannelId; // app.js'den alınmalı veya bir şekilde takip edilmeli
+        if (user && activeVoiceChannelId) {
+            updateDoc(doc(db, 'channels', activeVoiceChannelId, 'voice_members', user.uid), {
+                isSharing: true
+            }).catch(e => console.error("Status update error:", e));
+        }
+
         return true;
     } catch (e) {
         console.error("Ekran paylaşımı hatası:", e);
@@ -325,6 +367,15 @@ export const stopScreenShare = async () => {
         screenStream.getTracks().forEach(track => track.stop());
         screenStream = null;
         
+        // Firestore'da paylaşım durumunu güncelle
+        const user = auth.currentUser;
+        const activeVoiceChannelId = window.currentVoiceChannelId;
+        if (user && activeVoiceChannelId) {
+            updateDoc(doc(db, 'channels', activeVoiceChannelId, 'voice_members', user.uid), {
+                isSharing: false
+            }).catch(e => {});
+        }
+
         // Geniş ekranı gizle
         const display = document.getElementById('screen-share-display');
         if (display) {

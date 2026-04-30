@@ -11,6 +11,9 @@
     --error-color: #ff4757;
     --success-color: #43b581;
     --border-gold: rgba(197, 160, 89, 0.3);
+    --sidebar-width: 72px;
+    --channels-width: 240px;
+    --members-width: 240px;
 }
 
 /* --- DYNAMIC SERVER ATMOSPHERES --- */
@@ -130,6 +133,18 @@ input:checked + .slider:before { transform: translateX(18px); }
 }
 
 .hidden { display: none !important; }
+
+#sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    z-index: 3500;
+    transition: opacity 0.3s ease;
+}
 
 * {
     margin: 0;
@@ -492,33 +507,39 @@ body {
     /* Sidebars Hidden by Default on Mobile */
     #server-sidebar {
         position: fixed !important;
-        left: -80px;
+        left: calc(-1 * var(--sidebar-width));
         height: 100vh;
         z-index: 5000;
-        transition: 0.3s ease;
+        transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     #channels-sidebar {
         position: fixed !important;
-        left: -240px;
+        left: calc(-1 * (var(--sidebar-width) + var(--channels-width)));
         height: 100vh;
         z-index: 4000;
-        transition: 0.3s ease;
-        margin-left: 0;
+        transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        width: var(--channels-width);
     }
     #member-list {
         position: fixed !important;
-        right: -240px;
+        right: calc(-1 * var(--members-width));
         height: 100vh;
         z-index: 6000;
-        transition: 0.3s ease;
+        transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         background: var(--bg-side) !important;
-        width: 240px;
+        width: var(--members-width);
     }
 
     /* Active States (Show Sidebars) */
     body.show-sidebar #server-sidebar { left: 0; }
-    body.show-sidebar #channels-sidebar { left: 72px; }
+    body.show-sidebar #channels-sidebar { left: var(--sidebar-width); }
     body.show-members #member-list { right: 0; }
+    
+    body.show-sidebar #sidebar-overlay,
+    body.show-members #sidebar-overlay {
+        display: block !important;
+        opacity: 1;
+    }
 
     #main-content {
         margin-left: 0;
@@ -526,16 +547,91 @@ body {
     }
 
     #chat-header {
-        padding: 12px 16px;
+        padding: 0 12px;
+        justify-content: space-between;
     }
 
-    #chat-input-container {
+    #message-input-container {
         padding: 12px;
     }
     
     #voice-actions-bar {
         padding: 10px 16px;
-        width: 90%;
+        width: 95%;
+        gap: 8px;
+    }
+
+    #voice-actions-bar .icon-button {
+        width: 40px;
+        height: 40px;
+    }
+
+    #voice-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+    }
+}
+
+@media (max-width: 600px) {
+    .auth-card {
+        padding: 24px !important;
+    }
+    
+    #chat-header h3 {
+        font-size: 16px;
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .settings-content {
+        padding: 20px !important;
+    }
+    
+    #user-status-bar {
+        padding: 0 8px;
+    }
+    
+    .user-details {
+        display: none;
+    }
+
+    #discover-header {
+        padding: 12px !important;
+        flex-direction: column;
+        align-items: stretch !important;
+        text-align: center;
+    }
+
+    #discover-header div:first-child {
+        margin-bottom: 10px;
+    }
+
+    .discover-title {
+        font-size: 20px !important;
+    }
+
+    .discover-subtitle {
+        font-size: 11px !important;
+    }
+
+    #discover-search-container {
+        max-width: 100% !important;
+    }
+
+    #planet-detail-box {
+        bottom: 20px !important;
+        padding: 15px !important;
+    }
+
+    #planet-detail-logo {
+        width: 60px !important;
+        height: 60px !important;
+    }
+
+    #planet-detail-name {
+        font-size: 18px !important;
     }
 }
 
