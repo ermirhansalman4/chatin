@@ -16,7 +16,8 @@ import {
     arrayRemove,
     deleteDoc,
     setDoc,
-    collectionGroup
+    collectionGroup,
+    increment
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 import {
@@ -164,6 +165,9 @@ const renderSearchResults = (docs) => {
         const userData = d.data();
         if (userData.uid === auth.currentUser?.uid) return;
 
+        const safeDisplayName = escapeHTML(userData.displayName);
+        const safeUsername = escapeHTML(userData.username);
+
         const div = document.createElement('div');
         div.className = 'user-row';
         div.style = 'display:flex; align-items:center; justify-content:space-between; padding:12px; background:rgba(255,255,255,0.03); border-radius:12px; margin-bottom: 8px; border: 1px solid rgba(255,215,0,0.05);';
@@ -172,10 +176,10 @@ const renderSearchResults = (docs) => {
                 <img src="${userData.photoURL}" style="width:36px; height:36px; border-radius:50%; border: 1px solid var(--border-gold);">
                 <div style="display:flex; flex-direction:column;">
                     <div style="display:flex; align-items:center; gap:6px;">
-                        <span style="font-weight:600; font-size:14px; color:white;">${userData.displayName}</span>
+                        <span style="font-weight:600; font-size:14px; color:white;">${safeDisplayName}</span>
                         ${userData.level ? `<span style="font-size: 9px; background: rgba(197, 160, 89, 0.1); color: var(--brand-color); padding: 1px 4px; border-radius: 4px; border: 0.5px solid var(--border-gold);">Lvl ${userData.level}</span>` : ''}
                     </div>
-                    <span style="font-size:11px; color:gray;">@${userData.username}</span>
+                    <span style="font-size:11px; color:gray;">@${safeUsername}</span>
                 </div>
             </div>
             <button class="add-friend-action-btn" data-uid="${userData.uid}" style="background:var(--brand-color); color:black; border:none; padding:8px 16px; border-radius:10px; font-weight:900; cursor:pointer; font-size:12px; transition: 0.2s;">İSTEK AT</button>
@@ -228,13 +232,14 @@ const listenToFriendRequests = () => {
 
         snap.forEach(d => {
             const req = d.data();
+            const safeFromName = escapeHTML(req.fromName);
             const div = document.createElement('div');
             div.className = 'user-row';
             div.style = 'display:flex; align-items:center; justify-content:space-between; padding:12px; background:rgba(255,255,255,0.03); border-radius:12px;';
             div.innerHTML = `
                 <div style="display:flex; align-items:center; gap:12px;">
                     <img src="${req.fromPhoto}" style="width:32px; height:32px; border-radius:50%;">
-                    <span style="font-weight:600;">${req.fromName}</span>
+                    <span style="font-weight:600;">${safeFromName}</span>
                 </div>
                 <div style="display:flex; gap:8px;">
                     <button class="accept-req-btn" data-id="${d.id}" style="background:#2ecc71; color:white; border:none; padding:6px 12px; border-radius:8px; cursor:pointer;"><i data-lucide="check"></i></button>
@@ -463,12 +468,39 @@ export const listenToMessages = (channelId) => {
 
 
 
+// --- SECURITY HELPERS ---
+const escapeHTML = (str) => {
+    if (!str) return "";
+    return String(str).replace(/[&<>"']/g, function(m) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[m];
+    });
+};
+
+const safeLinkify = (text) => {
+    const escaped = escapeHTML(text);
+    // Sadece http:// ve https:// ile başlayan linkleri yakala
+    const urlPattern = /(https?:\/\/[^\s<]+)/g;
+    return escaped.replace(urlPattern, (url) => {
+        // XSS Önlemi: Link içinde tırnak veya tehlikeli karakter varsa escape edilmiş olmalı (zaten escaped'den geliyor)
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: var(--brand-color); text-decoration: underline;">${url}</a>`;
+    });
+};
+
 /**
  * Mesajı UI'da render et
  */
 const renderMessage = (data, id) => {
     const time = data.createdAt?.toDate() ? data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Az önce';
     const isMe = data.uid === auth.currentUser?.uid;
+
+    const safeUsername = escapeHTML(data.username);
+    const safeContent = safeLinkify(data.text);
 
     // TEPKİLERİ HESAPLA
     let reactionHtml = '';
@@ -498,12 +530,12 @@ const renderMessage = (data, id) => {
                 ` : ''}
             </div>
 
-            <img class="msg-avatar" src="${data.photoURL || data.userPhoto || `https://ui-avatars.com/api/?name=${data.username}&background=random`}" 
+            <img class="msg-avatar" src="${data.photoURL || data.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(safeUsername)}&background=random`}" 
                  style="width: 40px; height: 40px; border-radius: 50%; cursor: pointer;">
             <div style="flex:1;">
                 <div style="display: flex; gap: 8px; align-items: baseline;">
                     <span class="msg-username" style="font-weight: bold; color: #fff; cursor: pointer;">
-                        ${data.username} 
+                        ${safeUsername} 
                         ${data.isBot ? '<span style="background: var(--brand-color); color: #000; font-size: 9px; padding: 1px 4px; border-radius: 4px; margin-left: 4px; font-weight: 900;">BOT</span>' : ''}
                     </span>
                     <span style="font-size: 12px; color: var(--text-secondary);">${time}</span>
@@ -511,15 +543,7 @@ const renderMessage = (data, id) => {
                     ${data.isEdited ? '<span style="font-size: 10px; color: var(--text-secondary); italic;">(düzenlendi)</span>' : ''}
                 </div>
                 <div class="msg-body">
-                    <p class="${data.effect ? 'msg-effect-' + data.effect : ''}" data-text="${data.text || ''}" style="color: #dcddde; margin-top: 2px; white-space: pre-wrap; word-break: break-word; ${data.isBot ? 'background: rgba(197, 160, 89, 0.05); padding: 10px; border-radius: 8px; border-left: 3px solid var(--brand-color);' : ''}">${data.text || ''}</p>
-                    ${data.fileURL ? `
-                        <div class="cargo-pod">
-                            <img src="${data.fileURL}" class="media-message-img">
-                            <div style="margin-top: 8px; font-size: 10px; color: var(--brand-color); font-weight: 800; display: flex; align-items: center; gap: 5px;">
-                                <i data-lucide="package-check" style="width: 12px;"></i> CARGO RECEIVED
-                            </div>
-                        </div>
-                    ` : ''}
+                    <p class="${data.effect ? 'msg-effect-' + data.effect : ''}" data-text="${escapeHTML(data.text)}" style="color: #dcddde; margin-top: 2px; white-space: pre-wrap; word-break: break-word; ${data.isBot ? 'background: rgba(197, 160, 89, 0.05); padding: 10px; border-radius: 8px; border-left: 3px solid var(--brand-color);' : ''}">${safeContent}</p>
                 </div>
                 ${reactionHtml}
             </div>
@@ -887,6 +911,9 @@ const initGlobalDMListener = () => {
 };
 
 // --- CHAT INPUT & SENDING ---
+let lastMessageTime = 0;
+const MESSAGE_COOLDOWN_MS = 1500; // 1.5 saniye bekleme
+
 if (chatInput) {
     chatInput.oninput = (e) => {
         const val = e.target.value;
@@ -904,6 +931,14 @@ if (chatInput) {
             
             document.getElementById('command-menu')?.classList.add('hidden');
 
+            // --- RATE LIMIT CHECK ---
+            const now = Date.now();
+            if (now - lastMessageTime < MESSAGE_COOLDOWN_MS) {
+                showToast('⚡ Yavaş ol galaktik pilot! Çok hızlı mesaj gönderiyorsun.', 'error');
+                return;
+            }
+            lastMessageTime = now;
+
             if (isDMMode && currentDMRecipientId) {
                 sendDM(val);
             } else if (currentChannelId) {
@@ -914,49 +949,15 @@ if (chatInput) {
     };
 }
 
-// --- CHAT MEDIA UPLOAD (BASE64) ---
-const handleChatMediaUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (file.size > 1024 * 1024) {
-        return showToast("Dosya çok büyük! (Max 1MB)", "error");
-    }
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-        const base64Data = event.target.result;
-        
-        // Animasyonu IŞIK HIZINDA tetikle
-        const ship = document.createElement('div');
-        ship.className = 'cargo-ship-anim';
-        ship.style.cssText = "position:fixed; z-index:99999; top:45%; left:-150px; pointer-events:none;";
-        // Yeni, daha hzl ve güvenilir ikon
-        ship.innerHTML = '<img src="https://cdn-icons-png.flaticon.com/512/1356/1356479.png" style="width: 120px; filter: drop-shadow(0 0 15px #00ffff) blur(1px); transform: rotate(15deg);">';
-        document.body.appendChild(ship);
-        setTimeout(() => ship.remove(), 1500);
-
-        try {
-            if (isDMMode && currentDMRecipientId) {
-                await sendDM(base64Data, true);
-            } else if (currentChannelId) {
-                await sendMessage(base64Data, true);
-            }
-            showToast("Kargo podu fırlatıldı! 🚀");
-        } catch (err) {
-            showToast("Görsel hatası: " + err.message, "error");
-        }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-};
-
 const chatMediaInput = document.getElementById('chat-media-input');
 if (chatMediaInput) {
-    chatMediaInput.onchange = handleChatMediaUpload;
+    chatMediaInput.onclick = (e) => {
+        e.preventDefault();
+        showToast("Dosya yükleme şu anda desteklenmiyor. 🚫", "info");
+    };
 }
 
-export const sendMessage = async (content, isFile = false) => {
+export const sendMessage = async (content) => {
     if (!auth.currentUser || !currentChannelId) return;
 
     const msgData = {
@@ -965,15 +966,9 @@ export const sendMessage = async (content, isFile = false) => {
         photoURL: auth.currentUser.photoURL,
         createdAt: serverTimestamp(),
         channelId: currentChannelId,
+        text: content,
         reactions: {}
     };
-
-    if (isFile) {
-        msgData.fileURL = content;
-        msgData.text = "";
-    } else {
-        msgData.text = content;
-    }
 
     if (currentMessageEffect !== 'none') {
         msgData.effect = currentMessageEffect;
@@ -987,7 +982,14 @@ export const sendMessage = async (content, isFile = false) => {
         msgData.level = userSnap.data().level || 1;
     }
 
-    const docRef = await addDoc(collection(db, 'messages'), msgData);
+    await addDoc(collection(db, 'messages'), msgData);
+
+    // --- MESSAGE COUNT INCREMENT ---
+    if (currentServerId) {
+        updateDoc(doc(db, 'servers', currentServerId), {
+            messageCount: increment(1)
+        }).catch(() => {}); // Hatasız çalışsın
+    }
 
     // --- XP & LEVEL SYSTEM ---
     if (userSnap.exists()) {
@@ -1101,7 +1103,7 @@ const handleBotCommand = async (cmd, channelId, user) => {
     }
 };
 
-export const sendDM = async (content, isFile = false) => {
+export const sendDM = async (content) => {
     if (!auth.currentUser || !currentDMRecipientId) return;
 
     const participants = [auth.currentUser.uid, currentDMRecipientId].sort();
@@ -1112,15 +1114,9 @@ export const sendDM = async (content, isFile = false) => {
         recipientUid: currentDMRecipientId,
         username: auth.currentUser.displayName || "Kullanıcı",
         timestamp: serverTimestamp(),
+        text: content,
         reactions: {}
     };
-
-    if (isFile) {
-        msgData.fileURL = content;
-        msgData.text = "";
-    } else {
-        msgData.text = content;
-    }
 
     await addDoc(collection(db, `direct_messages/${dmId}/messages`), msgData);
 };
@@ -1292,10 +1288,19 @@ export const switchServer = async (serverId, serverData) => {
     window.lastActiveServerId = serverId;
     activeServerName.innerText = serverData.name;
 
-    // ATMOSFER UYGULA
+    // ATMOSFER VE TEMA UYGULA
     document.body.className = ''; // Temizle
     if (serverData.atmosphere && serverData.atmosphere !== 'default') {
         document.body.classList.add(`theme-${serverData.atmosphere}`);
+    }
+
+    // Banner Tema Uygula
+    const headerContainer = document.getElementById('server-header-btn');
+    if (headerContainer) {
+        // Eski temaları temizle
+        headerContainer.className = 'header-container banner-base';
+        const theme = serverData.bannerTheme || 'default';
+        headerContainer.classList.add(`banner-theme-${theme}`);
     }
 
     // ownerUid eksikse mevcut kullanıcıyı otomatik owner yap (eski sunucular için)
@@ -1744,8 +1749,12 @@ window.openUserProfile = async (data) => {
     pfp.src = data.photoURL || `https://ui-avatars.com/api/?name=${data.username || 'U'}&background=random`;
     name.innerText = data.username || 'Kullanıcı';
     bio.innerText = data.bio || "Henüz bir biyografi eklenmemiş.";
-    if (data.bannerURL) banner.style.backgroundImage = `url(${data.bannerURL})`;
-    else banner.style.backgroundImage = 'none';
+    
+    // Varsayılan Stil (Taze Veri gelene kadar)
+    document.getElementById('profile-view-mode').className = 'profile-card';
+    document.getElementById('profile-view-mode').style.borderColor = 'var(--border-gold)';
+    document.getElementById('profile-view-mode').style.boxShadow = 'none';
+    banner.style.background = 'linear-gradient(to bottom, rgba(197, 160, 89, 0.2), transparent)';
 
     // 2. Modalı aç
     const oldPanel = document.getElementById('profile-role-panel');
@@ -1754,6 +1763,12 @@ window.openUserProfile = async (data) => {
     document.getElementById('profile-modal-overlay').classList.remove('hidden');
     document.getElementById('profile-view-mode').classList.remove('hidden');
     document.getElementById('profile-edit-mode').classList.add('hidden');
+    
+    if (currentUser && currentUser.uid === data.uid) {
+        editBtn.style.display = 'block';
+    } else {
+        editBtn.style.display = 'none';
+    }
 
     // 3. Firestore'dan taze veriyi çek
     try {
@@ -1764,21 +1779,43 @@ window.openUserProfile = async (data) => {
             pfp.src = userData.photoURL || pfp.src;
             name.innerText = userData.username || name.innerText;
             bio.innerText = userData.bio || bio.innerText;
-            if (userData.bannerURL) banner.style.backgroundImage = `url(${userData.bannerURL})`;
+            
+            // Efekt ve Renk Uygula (Sadece Premium ise Efekt)
+            const themeColor = userData.themeColor || '#c5a059';
+            const cardEffect = userData.cardEffect || 'none';
+            const isPremium = userData.isPremium;
+
+            banner.style.background = `linear-gradient(to bottom, ${themeColor}80, transparent)`;
+            document.getElementById('profile-view-mode').style.borderColor = themeColor;
+            
+            if (isPremium && cardEffect !== 'none') {
+                document.getElementById('profile-view-mode').classList.add(`profile-effect-${cardEffect}`);
+                document.getElementById('profile-view-mode').style.boxShadow = `0 0 30px ${themeColor}40`;
+            }
 
             if (currentUser && currentUser.uid === data.uid) {
-                editBtn.classList.remove('hidden');
+                editBtn.style.display = 'block';
                 document.getElementById('edit-profile-pfp-input').value = userData.photoURL || '';
-                document.getElementById('edit-profile-banner-input').value = userData.bannerURL || '';
+                document.getElementById('edit-profile-color-input').value = themeColor;
                 document.getElementById('edit-profile-effect-input').value = userData.messageEffect || 'none';
+                document.getElementById('edit-profile-card-effect-input').value = userData.cardEffect || 'none';
                 document.getElementById('edit-profile-name-input').value = userData.username || '';
                 document.getElementById('edit-profile-bio-input').value = userData.bio || '';
             } else {
-                editBtn.classList.add('hidden');
+                editBtn.style.display = 'none';
             }
+
         }
     } catch (err) {
         console.error("Profil yüklenirken hata:", err);
+    }
+
+    // Modal açıldığında direkt edit moduna geçiş bayrağı varsa uygula
+    if (window.forceOpenProfileEdit) {
+        window.forceOpenProfileEdit = false;
+        if (currentUser && currentUser.uid === data.uid) {
+            document.getElementById('open-edit-mode-btn').click();
+        }
     }
 
     // Premium & Rozet Kontrolü
@@ -2129,19 +2166,19 @@ document.getElementById('server-header-btn').onclick = async () => {
             // Keşfet Ayarları Doldur
             document.getElementById('discovery-public-toggle').checked = serverData.isPublic !== false;
             document.getElementById('discovery-approval-toggle').checked = serverData.requiresApproval === true;
-            document.getElementById('discovery-category-select').value = serverData.category || 'genel';
-            document.getElementById('discovery-desc-input').value = serverData.description || '';
-            document.getElementById('discovery-lang-select').value = serverData.language || 'tr';
-            document.getElementById('discovery-tags-input').value = (serverData.tags || []).join(', ');
-            document.getElementById('discovery-atmosphere-select').value = serverData.atmosphere || 'default';
-            document.getElementById('server-banner-url').value = serverData.bannerURL || '';
-            document.getElementById('server-logo-url').value = serverData.logoURL || '';
             
-            // Önizlemeleri Yükle
-            const logoPreview = document.getElementById('settings-server-logo-preview');
-            const bannerPreview = document.getElementById('settings-server-banner-preview');
-            if (logoPreview) logoPreview.src = serverData.logoURL || '';
-            if (bannerPreview) bannerPreview.style.backgroundImage = serverData.bannerURL ? `url(${serverData.bannerURL})` : 'none';
+            // Set current banner theme
+            const currentTheme = serverData.bannerTheme || 'default';
+            window.selectedBannerTheme = currentTheme;
+            
+            // Update UI for banner selection
+            document.querySelectorAll('.banner-theme-card').forEach(card => {
+                card.style.borderColor = card.dataset.theme === currentTheme ? 'var(--brand-color)' : 'transparent';
+            });
+            const preview = document.getElementById('banner-live-preview');
+            if (preview) {
+                preview.className = `banner-base banner-theme-${currentTheme}`;
+            }
 
             // Sahibi Premium mu kontrol et (Temalar için)
             const ownerSnap = await getDoc(doc(db, 'users', serverData.ownerUid));
@@ -2159,7 +2196,33 @@ document.getElementById('server-header-btn').onclick = async () => {
     }
 };
 
-// BANNER & LOGO UPLOAD HANDLERS (Consolidated in handleImageUpload at the bottom)
+// BANNER THEME SELECTOR HANDLER
+document.querySelectorAll('.banner-theme-card').forEach(card => {
+    card.onclick = async () => {
+        const theme = card.dataset.theme;
+        const isPremiumTheme = card.classList.contains('premium-theme');
+        
+        // Eğer premium temaysa ve kullanıcı premium değilse engelle
+        if (isPremiumTheme) {
+            const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+            const isPremium = userSnap.exists() && userSnap.data().isPremium;
+            if (!isPremium) {
+                showToast("Bu tema sadece Galaktik Premium üyeler içindir!", "error");
+                document.getElementById('premium-welcome-modal').classList.remove('hidden');
+                return;
+            }
+        }
+
+        window.selectedBannerTheme = theme;
+        document.querySelectorAll('.banner-theme-card').forEach(c => c.style.borderColor = 'transparent');
+        card.style.borderColor = 'var(--brand-color)';
+        
+        const preview = document.getElementById('banner-live-preview');
+        if (preview) {
+            preview.className = `banner-base banner-theme-${theme}`;
+        }
+    };
+});
 
 // KEŞFET AYARLARINI KAYDET
 document.getElementById('save-discovery-settings').onclick = async () => {
@@ -2167,25 +2230,15 @@ document.getElementById('save-discovery-settings').onclick = async () => {
     try {
         const isPublic = document.getElementById('discovery-public-toggle').checked;
         const requiresApproval = document.getElementById('discovery-approval-toggle').checked;
-        const category = document.getElementById('discovery-category-select').value;
-        const description = document.getElementById('discovery-desc-input').value.trim();
-        const language = document.getElementById('discovery-lang-select').value;
-        const tags = document.getElementById('discovery-tags-input').value.split(',').map(t => t.trim().replace('#','')).filter(t => t);
-        const atmosphere = document.getElementById('discovery-atmosphere-select').value;
-        const bannerURL = document.getElementById('server-banner-url').value;
-        const logoURL = document.getElementById('server-logo-url').value;
+        const bannerTheme = window.selectedBannerTheme || 'default';
 
         await updateDoc(doc(db, 'servers', currentServerId), {
             isPublic,
             requiresApproval,
-            category,
-            description,
-            language,
-            tags,
-            atmosphere,
-            bannerURL,
-            logoURL
+            bannerTheme
         });
+
+        await logAuditAction("Keşfet Ayarları Güncellendi", "Sunucu görünürlük, onay veya tema ayarları değiştirildi.");
 
         showToast("Keşfet ayarları başarıyla güncellendi! 🪐", "success");
     } catch (err) {
@@ -2209,6 +2262,7 @@ document.getElementById('add-role-btn-final').onclick = async () => {
 
     try {
         await createRole(name, color, permissions, accessibleChannels);
+        await logAuditAction("Yeni Rol Oluşturuldu", "Rol Adı: " + name);
         showToast("Rol başarıyla oluşturuldu!", "success");
         document.getElementById('new-role-name').value = '';
         loadRoles();
@@ -2231,6 +2285,7 @@ document.getElementById('save-role-perms-btn').onclick = async () => {
             permissions: perms,
             accessibleChannels: accessibleChannels
         });
+        await logAuditAction("Rol Güncellendi", "Rol yetkileri veya kanal erişimleri değiştirildi.");
         showToast("Rol güncellendi!", "success");
         document.getElementById('role-editor').classList.add('hidden');
         loadRoles();
@@ -2249,7 +2304,7 @@ document.querySelectorAll('.settings-nav-item').forEach(item => {
         item.classList.add('active');
 
         // İçerik geçişi
-        const tabs = ['roles', 'members', 'requests', 'discovery'];
+        const tabs = ['roles', 'members', 'requests', 'discovery', 'stats', 'audit'];
         tabs.forEach(tabId => {
             const el = document.getElementById(`${tabId}-tab`);
             if (el) {
@@ -2269,10 +2324,89 @@ document.querySelectorAll('.settings-nav-item').forEach(item => {
             loadMembersInSettings();
         } else if (targetTab === 'requests') {
             loadJoinRequests();
+        } else if (targetTab === 'stats') {
+            loadServerStats();
+        } else if (targetTab === 'audit') {
+            loadAuditLogs();
         }
 
     };
 });
+
+// --- AUDIT & STATS LOGIC ---
+export const logAuditAction = async (actionType, details) => {
+    if (!currentServerId || !auth.currentUser) return;
+    try {
+        await addDoc(collection(db, 'servers', currentServerId, 'auditLogs'), {
+            uid: auth.currentUser.uid,
+            username: auth.currentUser.displayName || "Yetkili",
+            action: actionType,
+            details: details,
+            timestamp: serverTimestamp()
+        });
+    } catch (e) {
+        console.error('Audit Log hatası:', e);
+    }
+};
+
+const loadServerStats = async () => {
+    if (!currentServerId) return;
+    try {
+        const serverDoc = await getDoc(doc(db, 'servers', currentServerId));
+        if (serverDoc.exists()) {
+            const data = serverDoc.data();
+            document.getElementById('stats-msg-count').innerText = data.messageCount || 0;
+            document.getElementById('stats-member-count').innerText = data.memberCount || 0;
+            
+            const channelsSnap = await getDocs(collection(db, 'servers', currentServerId, 'channels'));
+            document.getElementById('stats-channel-count').innerText = channelsSnap.size;
+            
+            const rolesSnap = await getDocs(collection(db, 'servers', currentServerId, 'roles'));
+            document.getElementById('stats-role-count').innerText = rolesSnap.size;
+        }
+    } catch (err) {
+        console.error("Stats yüklenemedi", err);
+    }
+};
+
+const loadAuditLogs = async () => {
+    const list = document.getElementById('audit-log-list');
+    if (!list || !currentServerId) return;
+    
+    list.innerHTML = '<div style="color: grey; text-align: center; padding: 20px;"><i data-lucide="loader-2" class="spin"></i> Yükleniyor...</div>';
+    if(window.lucide) lucide.createIcons();
+
+    try {
+        const q = query(collection(db, 'servers', currentServerId, 'auditLogs'), orderBy('timestamp', 'desc'), limit(50));
+        const snap = await getDocs(q);
+        
+        list.innerHTML = '';
+        if (snap.empty) {
+            list.innerHTML = '<div style="color: grey; text-align: center; padding: 20px;">Henüz bir denetim kaydı bulunmuyor.</div>';
+            return;
+        }
+        
+        snap.forEach(docSnap => {
+            const data = docSnap.data();
+            const dateStr = data.timestamp ? new Date(data.timestamp.toDate()).toLocaleString() : 'Şimdi';
+            list.innerHTML += `
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 16px; border-radius: 12px; display: flex; align-items: center; gap: 16px; margin-bottom: 8px;">
+                    <i data-lucide="activity" style="color: var(--brand-color); width: 24px;"></i>
+                    <div style="flex: 1;">
+                        <div style="color: white; font-size: 14px; font-weight: 700; margin-bottom: 4px;">
+                            <span style="color: var(--brand-color);">${data.username}</span> ${data.action}
+                        </div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">${data.details}</div>
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 10px; font-weight: 800;">${dateStr}</div>
+                </div>
+            `;
+        });
+        if(window.lucide) lucide.createIcons();
+    } catch (err) {
+        list.innerHTML = `<div style="color: red; padding: 20px;">Hata: ${err.message}</div>`;
+    }
+};
 
 // --- JOIN REQUESTS LOGIC ---
 const loadJoinRequests = async () => {
@@ -2711,16 +2845,6 @@ document.addEventListener('click', async (e) => {
         }
     }
 
-    // 2. Ayarlar Popover Kontrolü
-    const settingsBtn = e.target.closest('#settings-btn');
-    const popover = document.getElementById('settings-popover');
-    if (settingsBtn) {
-        e.stopPropagation();
-        popover?.classList.toggle('hidden');
-        lucide.createIcons();
-    } else if (popover && !popover.contains(e.target)) {
-        popover.classList.add('hidden');
-    }
 
     // 3. Profil Görüntüleme
     const profileBtn = e.target.closest('#user-profile-btn') || e.target.closest('#open-profile-edit');
@@ -2980,6 +3104,116 @@ const switchSettingsTab = (tabId) => {
 document.querySelectorAll('.user-settings-nav-item[data-tab]').forEach(item => {
     item.onclick = () => switchSettingsTab(item.dataset.tab);
 });
+
+// --- FRIEND SEARCH LOGIC ---
+let allCachedUsers = [];
+const addFriendBtn = document.getElementById('add-friend-btn');
+const addFriendModal = document.getElementById('add-friend-modal');
+const closeAddFriendBtn = document.getElementById('close-add-friend-btn');
+const friendSearchInput = document.getElementById('friend-search-input');
+const friendSearchResults = document.getElementById('friend-search-results');
+const friendListTitle = document.getElementById('friend-list-title');
+
+if (addFriendBtn) {
+    addFriendBtn.addEventListener('click', async () => {
+        if (!auth.currentUser) return showToast('Önce giriş yapmalısın.', 'error');
+        
+        addFriendModal.classList.remove('hidden');
+        if(friendSearchInput) friendSearchInput.value = '';
+        if(friendListTitle) friendListTitle.innerText = "ÖNERİLEN KULLANICILAR";
+        
+        if (friendSearchResults) friendSearchResults.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);"><i data-lucide="loader-2" class="spin"></i> Galaksideki yolcular taranıyor...</div>';
+        if (window.lucide) lucide.createIcons();
+        
+        try {
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, limit(50));
+            const snap = await getDocs(q);
+            allCachedUsers = snap.docs.map(d => d.data());
+            
+            // Randomize array
+            allCachedUsers = allCachedUsers.sort(() => 0.5 - Math.random());
+            
+            renderFriendResults(allCachedUsers.slice(0, 15));
+        } catch (error) {
+            console.error("Kullanıcılar yüklenemedi:", error);
+            if (friendSearchResults) friendSearchResults.innerHTML = '<div style="color: red; text-align: center;">Kullanıcılar yüklenemedi.</div>';
+        }
+    });
+}
+
+if (closeAddFriendBtn) {
+    closeAddFriendBtn.addEventListener('click', () => {
+        addFriendModal.classList.add('hidden');
+    });
+}
+
+if (friendSearchInput) {
+    friendSearchInput.addEventListener('input', (e) => {
+        const val = e.target.value.trim().toLowerCase();
+        if (val.length === 0) {
+            if(friendListTitle) friendListTitle.innerText = "ÖNERİLEN KULLANICILAR";
+            renderFriendResults(allCachedUsers.slice(0, 15));
+            return;
+        }
+
+        if(friendListTitle) friendListTitle.innerText = "ARAMA SONUÇLARI";
+        const filtered = allCachedUsers.filter(u => {
+            const uname = (u.username || '').toLowerCase();
+            const realName = (u.displayName || '').toLowerCase();
+            return uname.includes(val) || realName.includes(val);
+        });
+        renderFriendResults(filtered);
+    });
+}
+
+function renderFriendResults(users) {
+    if (!friendSearchResults) return;
+    friendSearchResults.innerHTML = '';
+    
+    const filteredUsers = users.filter(u => u.uid !== auth.currentUser?.uid);
+
+    if (filteredUsers.length === 0) {
+        friendSearchResults.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Galakside bu isimde biri bulunamadı.</div>';
+        return;
+    }
+
+    filteredUsers.forEach(data => {
+        const el = document.createElement('div');
+        el.className = 'friend-search-card';
+        el.style.cssText = 'display: flex; align-items: center; gap: 15px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; cursor: pointer; transition: 0.2s;';
+        
+        const photo = data.photoURL || 'https://ui-avatars.com/api/?name=' + (data.username || 'U') + '&background=random';
+        const name = data.username || data.displayName || 'İsimsiz Üye';
+        const isPrem = data.isPremium ? '<i data-lucide="zap" style="width: 14px; color: gold; filter: drop-shadow(0 0 5px gold);"></i>' : '';
+        const bio = data.bio || 'Galaktik bir gezgin...';
+        
+        el.innerHTML = `
+            <img src="${photo}" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover;">
+            <div style="flex: 1;">
+                <div style="color: white; font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 5px;">
+                    ${name} ${isPrem}
+                </div>
+                <div style="color: var(--text-secondary); font-size: 11px; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;">
+                    ${bio}
+                </div>
+            </div>
+            <button class="auth-btn open-profile-trigger" style="width: auto; padding: 8px 16px; font-size: 11px; background: rgba(255,215,0,0.1); color: gold; border: 1px solid rgba(255,215,0,0.2);">PROFİLİ GÖR</button>
+        `;
+        
+        el.onmouseenter = () => el.style.background = 'rgba(255,255,255,0.08)';
+        el.onmouseleave = () => el.style.background = 'rgba(255,255,255,0.03)';
+        
+        el.onclick = () => {
+            window.openUserProfile(data);
+            if(addFriendModal) addFriendModal.classList.add('hidden');
+        };
+
+        friendSearchResults.appendChild(el);
+    });
+    
+    if (window.lucide) lucide.createIcons();
+}
 
 // Kapatma
 document.getElementById('settings-close-btn').onclick = () => {
@@ -3824,11 +4058,11 @@ const init3DUniverse = async () => {
     universeScene.add(new THREE.Points(starGeometry, starMaterial));
 
     const planetTextures = [
-        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/mars_1k_color.jpg', // Mars
-        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg', // Moon
-        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg', // Earth
-        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_lights_2048.png', // Night Earth
-        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/carbon/fair_clouds_2k.png' // Venus-like
+        'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
+        'https://unpkg.com/three-globe/example/img/earth-night.jpg',
+        'https://unpkg.com/three-globe/example/img/earth-topology.png',
+        'https://unpkg.com/three-globe/example/img/earth-water.png',
+        'https://unpkg.com/three-globe/example/img/earth-dark.jpg'
     ];
 
     function createTextLabel(text) {

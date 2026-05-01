@@ -238,6 +238,15 @@ body {
     border-bottom: 1px solid var(--border-gold);
     cursor: pointer;
     background: rgba(255,255,255,0.02);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    position: relative;
+    z-index: 10;
+    flex-shrink: 0; /* Boyutun küçülmesini engelle */
+}
+.header-container.banner-base {
+    height: 64px;
+    min-height: 64px;
+    max-height: 64px;
 }
 
 .channel-list {
@@ -499,6 +508,14 @@ body {
     text-transform: uppercase;
 }
 
+.settings-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 40px 60px;
+    position: relative;
+    background: var(--bg-deep);
+}
+
 /* --- RESPONSIVE MOBILE FIXES --- */
 .mobile-only { display: none; cursor: pointer; color: var(--text-secondary); }
 
@@ -742,45 +759,6 @@ body {
 }
 
 
-/* --- SETTINGS POPOVER --- */
-#settings-popover {
-    position: absolute;
-    bottom: 80px;
-    left: 12px;
-    width: 220px;
-    background: rgba(18, 18, 26, 0.95);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    padding: 8px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-    z-index: 10000;
-}
-
-.popover-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
-    border-radius: 6px;
-    color: var(--text-secondary);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: 0.2s;
-}
-
-.popover-item i { width: 16px; opacity: 0.7; }
-
-.popover-item:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: white;
-}
-
-.popover-item.danger { color: var(--error-color); }
-.popover-item.danger:hover {
-    background: rgba(255, 71, 87, 0.1);
-}
 
 /* --- SERVER SETTINGS MODAL IMPROVEMENTS --- */
 #server-settings-modal {
@@ -1316,4 +1294,115 @@ body {
 }
 .command-item:active {
     background: rgba(197, 160, 89, 0.2);
+}
+/* --- BANNER THEMES --- */
+.banner-base {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.5s ease;
+}
+
+/* Free Themes */
+.banner-theme-default { background: linear-gradient(135deg, #111827 0%, #312e81 100%); }
+.banner-theme-ocean { background: linear-gradient(135deg, #0077be 0%, #00a86b 100%); }
+.banner-theme-sunset { background: linear-gradient(135deg, #ff5f6d 0%, #ffc371 100%); }
+
+/* Premium Themes */
+.banner-theme-galaxy {
+    background: #05060f url('https://www.transparenttextures.com/patterns/stardust.png');
+    background-size: cover;
+    animation: galaxy-pulse 10s infinite alternate;
+}
+@keyframes galaxy-pulse {
+    0% { background-color: #05060f; }
+    100% { background-color: #1a0b2e; }
+}
+
+.banner-theme-nebula {
+    background: linear-gradient(135deg, #6d28d9 0%, #db2777 100%);
+    position: relative;
+}
+.banner-theme-nebula::after {
+    content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1) 0%, transparent 80%);
+    animation: nebula-move 8s infinite alternate;
+}
+@keyframes nebula-move {
+    0% { transform: scale(1) translate(0, 0); }
+    100% { transform: scale(1.5) translate(10%, 10%); }
+}
+
+.banner-theme-matrix {
+    background: #000;
+    position: relative;
+}
+.banner-theme-matrix::before {
+    content: "01010101"; color: #0f0; font-family: monospace; font-size: 10px;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0.1; display: flex; flex-wrap: wrap; overflow: hidden;
+    line-height: 1;
+}
+
+.banner-theme-cyberpunk {
+    background: #000;
+    border-bottom: 2px solid #00ffcc;
+    box-shadow: inset 0 0 50px rgba(0, 255, 204, 0.2);
+}
+
+.banner-theme-aurora {
+    background: linear-gradient(to bottom, #000 0%, #002b1b 100%);
+}
+.banner-theme-aurora::after {
+    content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0,255,150,0.1), transparent);
+    animation: aurora-sweep 5s infinite;
+}
+@keyframes aurora-sweep {
+    0% { transform: skewX(-20deg) translateX(-100%); }
+    100% { transform: skewX(-20deg) translateX(200%); }
+}
+
+/* --- PROFILE EFFECTS --- */
+.profile-effect-stars {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: url('https://www.transparenttextures.com/patterns/stardust.png');
+    opacity: 0.5; pointer-events: none;
+    animation: stars-twinkle 4s infinite;
+}
+@keyframes stars-twinkle {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.7; }
+}
+
+.profile-effect-nebula {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(138, 43, 226, 0.2) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.profile-effect-glow {
+    box-shadow: 0 0 30px var(--brand-color);
+    transition: box-shadow 0.3s;
+}
+
+.profile-effect-particles {
+    /* Basit bir CSS particle efekti için mask veya animation kullanılabilir */
+    background-image: radial-gradient(circle, var(--brand-color) 1px, transparent 1px);
+    background-size: 20px 20px;
+    animation: particles-move 20s linear infinite;
+}
+@keyframes particles-move {
+    from { background-position: 0 0; }
+    to { background-position: 100px 100px; }
+}
+
+/* Premium Lock Badge */
+.premium-lock {
+    position: absolute; top: 8px; right: 8px;
+    background: rgba(0,0,0,0.6); color: gold;
+    padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800;
+    display: flex; align-items: center; gap: 4px; border: 1px solid gold;
+    z-index: 10;
 }

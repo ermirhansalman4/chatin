@@ -1,0 +1,120 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Yardımcı Fonksiyonlar
+    function signedIn() {
+      return request.auth != null;
+    }
+    
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    
+    function isPremiumUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.premium.active == true;
+    }
+    
+    function isServerMember(serverId) {
+      return signedIn() && 
+        exists(/databases/$(database)/documents/servers/$(serverId)/members/$(request.auth.uid));
+    }
+    
+    function getServerMember(serverId) {
+      return get(/databases/$(database)/documents/servers/$(serverId)/members/$(request.auth.uid));
+    }
+    
+    function isServerOwner(serverId) {
+      return signedIn() && 
+        get(/databases/$(database)/documents/servers/$(serverId)).data.ownerUid == request.auth.uid;
+    }
+    
+    function isServerPremium(serverId) {
+      return get(/databases/$(database)/documents/servers/$(serverId)).data.premium.active == true;
+    }
+    
+    function isServerAdmin(serverId) {
+      return isServerOwner(serverId) || 
+        (isServerMember(serverId) && getServerMember(serverId).data.roles.hasAny(['admin', 'moderator']));
+    }
+
+    // --- KULLANICI KURALLARI ---
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if isSelf(uid);
+      allow update: if isSelf(uid) && 
+        !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['premium', 'badges', 'role', 'createdAt', 'xp', 'level']) &&
+        // Premium Effect Whitelist
+        (
+          request.resource.data.profileCard.effect == 'none' || 
+          isPremiumUser()
+        );
+    }
+
+    // --- SUNUCU KURALLARI ---
+    match /servers/{serverId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update: if isServerAdmin(serverId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['ownerUid', 'premium', 'members', 'memberCount', 'inviteCode', 'vanityCode']) &&
+        // Premium Showcase Theme Whitelist
+        (
+          !request.resource.data.showcase.bannerTheme.hasAny(['galaxy', 'nebula', 'matrix', 'cyberpunk', 'aurora', 'fire', 'ice']) ||
+          isServerPremium(serverId)
+        );
+      allow delete: if isServerOwner(serverId);
+      
+      match /members/{memberId} {
+        allow read: if isServerMember(serverId);
+        allow create: if signedIn();
+        allow update: if isServerAdmin(serverId) && 
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'joinedAt']);
+        allow delete: if isServerAdmin(serverId) || isSelf(memberId);
+      }
+      
+      match /roles/{roleId} {
+        allow read: if isServerMember(serverId);
+        allow write: if isServerAdmin(serverId);
+      }
+    }
+
+    // --- MESAJ KURALLARI ---
+    match /messages/{messageId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && 
+        request.resource.data.uid == request.auth.uid &&
+        !request.resource.data.hasAny(['fileURL']) && // Dosya yükleme yasak
+        (request.resource.data.effect == null || request.resource.data.effect == 'none' || isPremiumUser());
+      allow update: if signedIn() && resource.data.uid == request.auth.uid && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'createdAt', 'channelId', 'fileURL']);
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isServerAdmin(resource.data.serverId));
+    }
+
+    // --- ÖZEL MESAJLAR (DM) ---
+    match /direct_messages/{dmId} {
+      allow read: if signedIn() && request.auth.uid in dmId.split('_');
+      
+      match /messages/{msgId} {
+        allow read: if signedIn() && request.auth.uid in dmId.split('_');
+        allow create: if signedIn() && request.auth.uid in dmId.split('_') && !request.resource.data.hasAny(['fileURL']);
+      }
+    }
+
+    // --- DİĞER ---
+    match /friend_requests/{requestId} {
+      allow read, create, update, delete: if signedIn() && (resource.data.toUid == request.auth.uid || resource.data.fromUid == request.auth.uid || request.resource.data.fromUid == request.auth.uid);
+    }
+    
+    match /vanityCodes/{code} {
+      allow read: if true;
+      allow write: if false; // Sadece Backend/Admin SDK
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if signedIn(); // Detaylı yetki kontrolü serverId bazlı olmalı
+      allow write: if false; // Sadece Backend
+    }
+  }
+}
