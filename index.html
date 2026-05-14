@@ -354,7 +354,6 @@
                 <div class="user-settings-nav-item active" data-tab="account"><i data-lucide="user" style="width: 16px;"></i> Hesabım</div>
                 <div class="user-settings-nav-item" data-tab="appearance"><i data-lucide="monitor" style="width: 16px;"></i> Görünüm & Ses</div>
                 <div class="user-settings-nav-item" data-tab="premium-status"><i data-lucide="gem" style="width: 16px;"></i> Premium Durumu</div>
-                <div class="user-settings-nav-item" data-tab="integrations"><i data-lucide="layers" style="width: 16px;"></i> Entegrasyonlar</div>
                 <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 20px 0;"></div>
                 <div class="user-settings-nav-item danger" id="direct-logout-btn"><i data-lucide="log-out" style="width: 16px;"></i> Çıkış Yap</div>
             </div>
@@ -446,48 +445,7 @@
                     </div>
                 </div>
 
-                <!-- Integrations Tab -->
-                <div id="settings-tab-integrations" class="settings-tab-content hidden">
-                    <h2 style="color: white; margin-bottom: 30px; font-size: 24px;">Entegrasyonlar</h2>
-                    
-                    <div style="background: rgba(0,0,0,0.2); padding: 25px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 25px;">
-                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
-                            <div style="width: 40px; height: 40px; background: #5d5fef; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                                <i data-lucide="message-square" style="color: white; width: 24px;"></i>
-                            </div>
-                            <div>
-                                <h3 style="color: white; margin: 0; font-size: 18px;">Supsis Canlı Destek</h3>
-                                <p style="color: var(--text-secondary); font-size: 12px; margin: 5px 0 0 0;">Chatin üzerinden Supsis API ile mesajlaşın.</p>
-                            </div>
-                        </div>
 
-                        <div style="display: flex; flex-direction: column; gap: 20px;">
-                            <div>
-                                <label style="display: block; font-size: 11px; color: var(--text-secondary); font-weight: 800; margin-bottom: 8px; text-transform: uppercase;">SUPSIS API TOKEN</label>
-                                <input type="password" id="supsis-token-input" placeholder="Bearer eyJhbGci..." style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; border-radius: 8px; outline: none; font-size: 13px;">
-                            </div>
-
-                            <div>
-                                <label style="display: block; font-size: 11px; color: var(--text-secondary); font-weight: 800; margin-bottom: 8px; text-transform: uppercase;">SUPSIS USER OBJECT ID (FROM)</label>
-                                <input type="text" id="supsis-user-id-input" placeholder="User ObjectId" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; border-radius: 8px; outline: none; font-size: 13px;">
-                            </div>
-
-                            <div>
-                                <label style="display: block; font-size: 11px; color: var(--text-secondary); font-weight: 800; margin-bottom: 8px; text-transform: uppercase;">DEFAULT CONTACT ID (OPSİYONEL)</label>
-                                <input type="text" id="supsis-contact-id-input" placeholder="contactId" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; border-radius: 8px; outline: none; font-size: 13px;">
-                            </div>
-
-                            <button id="save-supsis-settings" class="auth-btn" style="background: var(--brand-color); color: white; margin-top: 10px;">AYARLARI KAYDET</button>
-                        </div>
-                    </div>
-
-                    <div style="background: rgba(255,215,0,0.05); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,215,0,0.1);">
-                        <div style="display: flex; gap: 12px; color: gold;">
-                            <i data-lucide="info" style="width: 20px; flex-shrink: 0;"></i>
-                            <p style="font-size: 12px; margin: 0; line-height: 1.5;">Supsis entegrasyonu sayesinde Chatin üzerinden gönderdiğiniz mesajlar otomatik olarak Supsis panelinize iletilebilir.</p>
-                        </div>
-                    </div>
-                </div>
 
             </div>
         </div>
@@ -1399,6 +1357,11 @@
             </div>
         </div>
     </div>
+    <!-- Start of SUPSIS Embed Code --> 
+    <script>window.supsis=window.supsis||function(){(supsis.q=supsis.q||[]).push(arguments)};supsis.l=+new Date;</script>
+    <script src="https://emirhansalman.visitor.supsis.live/static/js/loader.js" type="text/javascript" async defer></script>
+    <!-- End of SUPSIS Embed Code --> 
+
     <!-- THREE.JS FOR 3D UNIVERSE (Bottom Loading for stability) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
