@@ -984,6 +984,9 @@ export const sendMessage = async (content) => {
 
     await addDoc(collection(db, 'messages'), msgData);
 
+    // --- SUPSIS INTEGRATION ---
+    sendToSupsis(content).catch(e => console.error("Supsis Hatası:", e));
+
     // --- MESSAGE COUNT INCREMENT ---
     if (currentServerId) {
         updateDoc(doc(db, 'servers', currentServerId), {
@@ -2447,7 +2450,6 @@ const loadJoinRequests = async () => {
         listContainer.innerHTML = '';
         requests.forEach(data => {
             const requestItem = document.createElement('div');
-
             requestItem.className = 'role-item'; // Reuse role-item styling for consistency
             requestItem.style.background = 'rgba(255,255,255,0.03)';
             requestItem.style.padding = '16px';
@@ -3101,6 +3103,21 @@ const openUserSettings = async (tab = 'account') => {
                 }
                 if (window.lucide) lucide.createIcons();
             }
+
+            // Supsis ayarlarını yükle
+            const supsisTokenInput = document.getElementById('supsis-token-input');
+            const supsisUserIdInput = document.getElementById('supsis-user-id-input');
+            const supsisContactIdInput = document.getElementById('supsis-contact-id-input');
+            
+            if (supsisTokenInput && userData.supsisConfig) {
+                supsisTokenInput.value = userData.supsisConfig.token || '';
+            }
+            if (supsisUserIdInput && userData.supsisConfig) {
+                supsisUserIdInput.value = userData.supsisConfig.userId || '';
+            }
+            if (supsisContactIdInput && userData.supsisConfig) {
+                supsisContactIdInput.value = userData.supsisConfig.contactId || '';
+            }
         }
     } catch (err) {
         console.warn("Firestore'dan ayarlar çekilemedi (Normal olabilir):", err);
@@ -3123,6 +3140,66 @@ const switchSettingsTab = (tabId) => {
 document.querySelectorAll('.user-settings-nav-item[data-tab]').forEach(item => {
     item.onclick = () => switchSettingsTab(item.dataset.tab);
 });
+
+// Supsis Ayarlarını Kaydet
+document.getElementById('save-supsis-settings').onclick = async () => {
+    const user = auth.currentUser;
+    if (!user) return showToast("Önce giriş yapmalısın.", "error");
+
+    const token = document.getElementById('supsis-token-input').value.trim();
+    const userId = document.getElementById('supsis-user-id-input').value.trim();
+    const contactId = document.getElementById('supsis-contact-id-input').value.trim();
+
+    try {
+        await updateDoc(doc(db, 'users', user.uid), {
+            supsisConfig: {
+                token: token,
+                userId: userId,
+                contactId: contactId
+            }
+        });
+        showToast("Supsis ayarları başarıyla kaydedildi! 🚀", "success");
+    } catch (err) {
+        showToast("Hata: " + err.message, "error");
+    }
+};
+
+// Supsis'e Mesaj Gönder
+const sendToSupsis = async (text) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (!userDoc.exists()) return;
+        
+        const userData = userDoc.data();
+        const config = userData.supsisConfig;
+        
+        if (!config || !config.token || !config.userId || !config.contactId) return;
+
+        const url = `https://socket.supsis.live/api/customer/v1/contacts/${config.contactId}/messages`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${config.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: { content: text },
+                from: config.userId
+            })
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error("Supsis API Hatası:", errText);
+        }
+    } catch (err) {
+        console.error("Supsis entegrasyon hatası:", err);
+    }
+};
 
 // --- FRIEND SEARCH LOGIC ---
 let allCachedUsers = [];
@@ -3445,15 +3522,23 @@ const renderTourStep = () => {
     if (window.lucide) lucide.createIcons();
 };
 
-const startTour = () => {
-    const hasSeenTour = localStorage.getItem("chatin-tour-completed");
-    if (hasSeenTour) return;
+const startTour = (force = false) => {
+    if (!force) {
+        const hasSeenTour = localStorage.getItem("chatin-tour-completed");
+        if (hasSeenTour) return;
+    }
 
+    currentTourStep = 0; // Her zaman baştan başla
     const container = document.getElementById("wizard-container");
     if(container) {
         container.classList.remove("hidden");
         renderTourStep();
     }
+};
+window.startTour = startTour;
+window.resetTour = () => {
+    document.getElementById('user-settings-modal').classList.add('hidden');
+    startTour(true);
 };
 
 const wizNext = document.getElementById("wizard-next-btn");

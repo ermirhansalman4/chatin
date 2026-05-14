@@ -141,13 +141,18 @@ service cloud.firestore {
     
     match /vanityCodes/{code} {
       allow read: if true;
-      allow write: if false; // Sadece Backend/Admin SDK
+      allow write: if false;
     }
 
     match /auditLogs/{logId} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update, delete: if false; // Audit loglar değiştirilemez
+      allow update, delete: if false;
+    }
+
+    // --- COLLECTION GROUP: DM Mesajları (Global DM Listener için) ---
+    match /{path=**}/messages/{msgId} {
+      allow read: if signedIn();
     }
   }
 }
