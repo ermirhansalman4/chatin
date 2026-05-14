@@ -1795,12 +1795,18 @@ window.openUserProfile = async (data) => {
 
             if (currentUser && currentUser.uid === data.uid) {
                 editBtn.style.display = 'block';
-                document.getElementById('edit-profile-pfp-input').value = userData.photoURL || '';
-                document.getElementById('edit-profile-color-input').value = themeColor;
-                document.getElementById('edit-profile-effect-input').value = userData.messageEffect || 'none';
-                document.getElementById('edit-profile-card-effect-input').value = userData.cardEffect || 'none';
-                document.getElementById('edit-profile-name-input').value = userData.username || '';
-                document.getElementById('edit-profile-bio-input').value = userData.bio || '';
+                const pfpInput = document.getElementById('edit-profile-pfp-input');
+                const colorInput = document.getElementById('edit-profile-color-input');
+                const effectInput = document.getElementById('edit-profile-effect-input');
+                const cardEffectInput = document.getElementById('edit-profile-card-effect-input');
+                const nameInput = document.getElementById('edit-profile-name-input');
+                const bioInput = document.getElementById('edit-profile-bio-input');
+                if (pfpInput) pfpInput.value = userData.photoURL || '';
+                if (colorInput) colorInput.value = themeColor;
+                if (effectInput) effectInput.value = userData.messageEffect || 'none';
+                if (cardEffectInput) cardEffectInput.value = userData.cardEffect || 'none';
+                if (nameInput) nameInput.value = userData.username || '';
+                if (bioInput) bioInput.value = userData.bio || '';
             } else {
                 editBtn.style.display = 'none';
             }
@@ -1994,7 +2000,8 @@ const renderChannelItem = (data, id, isOwner) => {
 
 // --- KANAL DÜZENLEME MODAL İŞLEMLERİ ---
 document.getElementById('save-channel-name-btn').onclick = async () => {
-    const newName = document.getElementById('edit-channel-name-input').value.trim();
+    const editInput = document.getElementById('edit-channel-name-input');
+    const newName = editInput ? editInput.value.trim() : '';
     if (!newName || !window.editingChannelId) return;
 
     try {
@@ -2253,8 +2260,11 @@ document.getElementById('close-server-settings').onclick = () => {
 
 // --- ROL OLUŞTURMA FİNAL ---
 document.getElementById('add-role-btn-final').onclick = async () => {
-    const name = document.getElementById('new-role-name').value.trim();
-    const color = document.getElementById('new-role-color').value;
+    const roleNameEl = document.getElementById('new-role-name');
+    const roleColorEl = document.getElementById('new-role-color');
+    if (!roleNameEl || !roleColorEl) return;
+    const name = roleNameEl.value.trim();
+    const color = roleColorEl.value;
     const permissions = Array.from(document.querySelectorAll('#new-role-permissions input:checked')).map(cb => cb.value);
     const accessibleChannels = Array.from(document.querySelectorAll('#new-role-channels input:checked')).map(cb => cb.value);
 
@@ -2264,7 +2274,7 @@ document.getElementById('add-role-btn-final').onclick = async () => {
         await createRole(name, color, permissions, accessibleChannels);
         await logAuditAction("Yeni Rol Oluşturuldu", "Rol Adı: " + name);
         showToast("Rol başarıyla oluşturuldu!", "success");
-        document.getElementById('new-role-name').value = '';
+        if (roleNameEl) roleNameEl.value = '';
         loadRoles();
         // Checkboxları sıfırla
         document.querySelectorAll('#new-role-permissions input, #new-role-channels input').forEach(cb => cb.checked = false);
@@ -2717,7 +2727,9 @@ const saveCustomInviteBtn = document.getElementById('save-custom-invite');
 if (saveCustomInviteBtn) {
     saveCustomInviteBtn.onclick = async () => {
         if (!currentServerId) return;
-        const newCode = document.getElementById('custom-invite-input').value.trim();
+        const input = document.getElementById('custom-invite-input');
+        if (!input) return;
+        const newCode = input.value.trim();
         if (!newCode) return;
 
         if (newCode.length < 3) return showToast("Özel kod en az 3 karakter olmalı!", "error");
@@ -2788,8 +2800,11 @@ document.addEventListener('click', async (e) => {
         const descInput = document.getElementById('server-description-input');
         const publicCheck = document.getElementById('server-public-checkbox');
         const approvalCheck = document.getElementById('server-approval-checkbox');
-
         const logoUrlInput = document.getElementById('new-server-logo-url');
+
+        if (!nameInput || !catInput || !descInput || !publicCheck || !approvalCheck) {
+            return console.error("Sunucu oluşturma form elemanları eksik!");
+        }
 
         const name = nameInput.value.trim();
         if (!name) return showToast("Sunucu adı boş olamaz!", "error");
@@ -2801,15 +2816,19 @@ document.addEventListener('click', async (e) => {
                 description: descInput.value.trim(),
                 isPublic: publicCheck.checked,
                 requiresApproval: approvalCheck.checked,
-                logoURL: logoUrlInput.value || ""
+                logoURL: logoUrlInput ? logoUrlInput.value : ""
             });
             document.getElementById('create-server-modal').classList.add('hidden');
             
             // Clear fields
             nameInput.value = '';
             descInput.value = '';
-            logoUrlInput.value = '';
-            document.getElementById('new-server-logo-preview').innerHTML = '<i data-lucide="image" style="width: 20px; color: var(--text-secondary);"></i>';
+            if (logoUrlInput) logoUrlInput.value = '';
+            
+            const logoPreview = document.getElementById('new-server-logo-preview');
+            if (logoPreview) {
+                logoPreview.innerHTML = '<i data-lucide="image" style="width: 20px; color: var(--text-secondary);"></i>';
+            }
             if (window.lucide) window.lucide.createIcons();
             
             showToast("Güneş Sistemi'nde yeni bir sunucu doğdu!", "success");
@@ -3317,8 +3336,12 @@ const initSettings = () => {
 
     applyTheme(savedTheme);
     document.documentElement.style.setProperty('--chat-font-size', savedFont + 'px');
-    document.getElementById('font-size-slider').value = savedFont;
-    document.getElementById('notif-sound-toggle').checked = soundEnabled;
+    
+    const fontSlider = document.getElementById('font-size-slider');
+    if (fontSlider) fontSlider.value = savedFont;
+    
+    const soundToggle = document.getElementById('notif-sound-toggle');
+    if (soundToggle) soundToggle.checked = soundEnabled;
 
     // Aktif tema kartını işaretle
     document.querySelectorAll('.theme-card').forEach(c => c.classList.toggle('active', c.dataset.theme === savedTheme));
@@ -3991,9 +4014,10 @@ handleImageUpload('server-banner-file', 2/1, 'server_banners', async (url) => {
 });
 
 handleImageUpload('new-server-logo-file', 1, 'server_logos', async (url) => {
-    document.getElementById('new-server-logo-url').value = url;
+    const logoInput = document.getElementById('new-server-logo-url');
+    if (logoInput) logoInput.value = url;
     const preview = document.getElementById('new-server-logo-preview');
-    preview.innerHTML = `<img src="${url}" style="width: 100%; height: 100%; object-fit: cover;">`;
+    if (preview) preview.innerHTML = `<img src="${url}" style="width: 100%; height: 100%; object-fit: cover;">`;
     showToast('Logo seçildi! ✨', 'success');
 });
 
